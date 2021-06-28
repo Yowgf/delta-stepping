@@ -1,9 +1,9 @@
 //===----------------------------------------------------------===//
 // DS module
 //
-// File purpose: graph class header file
+// File purpose: digraph class header file
 //
-// Description: graph is the main type to be used by the
+// Description: digraph is the main type to be used by the
 // delta-stepping algorithm. It shall be optimized to make use of
 // bucket fusion, good memory locality and reuse.
 //
@@ -15,11 +15,13 @@
 #ifndef INTERFACE_H
 #define INTERFACE_H
 
+#include "DS/digraphNode.hpp"
+
 namespace DS {
   
-class graph {
+class digraph {
 public:
-  graph();
+  digraph();
   
 };
 

@@ -11,7 +11,22 @@
 
 #include "Interface/init.hpp"
 
+#include <cerrno>
+#include <iostream>
+
+using namespace std;
+
 int main(int argc, char** argv)
 {
-  return 0;
+  try {
+    Interface::init(argc, argv);
+  }
+  catch (std::exception& e) {
+    cerr << "Uncaught exception:\n"\
+      "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"\
+         << e.what() << "\n"\
+      "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+  }
+    
+  return errno;
 }

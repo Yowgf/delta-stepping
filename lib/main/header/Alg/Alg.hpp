@@ -1,14 +1,13 @@
 //===----------------------------------------------------------===//
-// DS module
+// Alg module
 //
 // File purpose: allow the use to include all the header files in
-// the DS namespace with a single #include call
+// the Alg namespace with a single #include call
 //===----------------------------------------------------------===//
 
-#ifndef DS_H
-#define DS_H
+#ifndef ALG_H
+#define ALG_H
 
-#include "digraph.hpp"
-#include "digraphNode.hpp"
+#include "Alg/deltaStepping.hpp"
 
 #endif

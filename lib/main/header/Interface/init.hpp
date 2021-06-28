@@ -10,19 +10,22 @@
 #ifndef INIT_H
 #define INIT_H
 
-#include "DS/graph.hpp"
+#include "DS/digraph.hpp"
 
 namespace Interface {
 
 class init {
+  using digraph = DS::digraph;
+  
 public:
   init(int argc, char** argv);
 
 private:
-  using graph = DS::graph;
-  
-  bool validate_arguments(int argc, char** argv);
-  graph* process_entries(int argc, char** argv);
+  static constexpr int knumProgArgs = 2;
+
+  // Performs some basic validation on the program arguments.
+  bool validateArguments(int argc, char** argv) const noexcept;
+  digraph* processEntries(int argc, char** argv) const noexcept(false);
   
 };
 
