@@ -8,6 +8,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "Utils/defs.hpp"
 #include "Utils/error.hpp"
 #include "Utils/file.hpp"
 

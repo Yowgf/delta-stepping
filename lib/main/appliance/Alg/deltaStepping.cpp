@@ -9,7 +9,7 @@
 
 namespace Alg {
 
-using digraph = DS::digraph;
+using digraph = DS::digraph<ALG_TYPE>;
 
 deltaStepping::deltaStepping(digraph* inGraph)
 {}

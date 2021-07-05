@@ -8,6 +8,9 @@
 #include "Utils/file.hpp"
 
 #include <cstdio>
+#include <stdexcept>
+
+using namespace std;
 
 namespace Utils {
 
@@ -17,9 +20,33 @@ bool file::exists(const char* fileName)
   bool result = false;
   if (f) {
     result = true;
+    fclose(f);
   }
-  fclose(f);
   return result;
+}
+
+
+void file::checkIfstreamGood
+(std::ifstream& ifs, const unsigned lineNum) noexcept(false)
+{
+  if (!ifs.good()) {
+    throw std::logic_error{
+      string("Line ") + to_string(lineNum) + ": " +
+        "stream not in good state"};
+  }
+}
+
+void file::checkIfstreamNextChar
+(std::ifstream& ifs, const char exp, const unsigned lineNum)
+  noexcept(false)
+{
+  char got = '\0';
+  got = ifs.get();
+  if (got != exp) {
+    throw std::logic_error{
+      string("Line ") + to_string(lineNum) + ": " +\
+        "Expected " + to_string(exp) + ", got "  + to_string(got)};
+  }
 }
 
 }

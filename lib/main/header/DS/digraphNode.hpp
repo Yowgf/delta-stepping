@@ -1,45 +1,56 @@
 //===----------------------------------------------------------===//
 // DS module
 //
-// File purpose: ~digraphNode~ class declaration.
+// File purpose: ~digraphNode~ class declaration, and definition
+// (since it is a template).
 //===----------------------------------------------------------===//
 
 #ifndef NODE_H
 #define NODE_H
 
-#include <vector>
+#include "DS/array.hpp"
 
 namespace DS {
 
 template<typename valueType>
 class digraphNode {
-
-  // We build different types for in and out edges, to avoid
-  // confusion
-  using inEdges = std::vector<digraphNode<valueType>*>;
-  using outEdges = std::vector<digraphNode<valueType>*>;
+private:
+  using outEdges = DS::array<unsigned>; // See DS/array.hpp
 
 public:
-  digraphNode(unsigned ID, valueType value,
-       inEdges* prev, outEdges* next) :
-    ID(ID), value(value)
+  digraphNode(const unsigned ID,
+              const valueType& value,
+              const unsigned numOut  // Number of outgoing edges
+              )
+    : ID(ID), value(value), out(nullptr)
   {
-    // Assure that we don't receive nullptrs
-    if (prev) this->prev = *prev;
-    if (next) this->next = *next;
+    if (numOut) {
+      out = new outEdges(numOut, 0);
+    }
   }
 
-  digraphNode(unsigned ID) : digraphNode(ID, 0, nullptr) {}
+  // These constructors create nodes with 0 outgoing edges.
+  digraphNode(const unsigned ID, const valueType& value)
+    : digraphNode(ID, value, 0) {}
+
+  digraphNode(const unsigned ID) : digraphNode(ID, 0) {}
+
+  // In the functions below, we expect that the user knows where to
+  // put the node (by providing the pos parameter).
+  void insertOut(const unsigned outNodeID, const unsigned pos)
+  {
+    if (out != nullptr) {
+      out->at(pos) = outNodeID;
+    }
+    else {
+      throw std::logic_error{"Impossible to use nullptr inEdges"};
+    }
+  }
 
 private:
   const unsigned ID;
   valueType value;
-
-  // We use vectors to allocate previous and next nodes, since we
-  // will have a fixed number of those, and we do it on the stack,
-  // to avoid memory fragmentation.
-  inEdges prev;
-  outEdges next;
+  outEdges* out;
  
 };
 
