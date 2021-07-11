@@ -12,6 +12,8 @@
 #ifndef ERROR_H
 #define ERROR_H
 
+#include "Utils/defs.hpp"
+
 #include <cerrno>
 #include <cstdio>
 #include <iostream>

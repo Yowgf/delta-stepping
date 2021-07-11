@@ -35,29 +35,33 @@ public:
 
   array() : arrSz(0), innerArr(nullptr) {}
 
-  // Copy-constructors
-  array(array& rhs)
+  // Move-constructor -- called when we have rvalue parameters.
+  array(array&& rhs)
   {
     arrSz = rhs.arrSz;
     if (innerArr) {
-      free(innerArr);
+      delete[] innerArr;
     }
-    register unsigned i = 0;
-    for(i = 0; i < arrSz; ++i) {
-      innerArr[i] = rhs.at(i);
-    }        
+
+    innerArr = rhs.innerArr;
+
+    // Nullify rhs
+    rhs.innerArr = nullptr;
+    rhs.arrSz = 0;
   }
 
-  array& operator =(array& rhs)
+  array& operator =(array&& rhs)
   {
     array{rhs};
     return *this;
   }
-  // End copy-constructors
+  // End move-constructors
   
+  // Copy-constructors
+
   ~array()
   {
-    delete[] innerArr;
+    destroy();
   }
 
   // Access
@@ -80,6 +84,11 @@ public:
 private:
   unsigned arrSz;
   valueType* innerArr;
+
+  void destroy()
+  {
+    delete[] innerArr;
+  }
 
   void fill(const valueType& val)
   {

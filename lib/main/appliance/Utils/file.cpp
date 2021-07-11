@@ -45,7 +45,7 @@ void file::checkIfstreamNextChar
   if (got != exp) {
     throw std::logic_error{
       string("Line ") + to_string(lineNum) + ": " +\
-        "Expected " + to_string(exp) + ", got "  + to_string(got)};
+        "Expected '" + exp + "', got "  + got};
   }
 }
 
