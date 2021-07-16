@@ -65,19 +65,19 @@ public:
   }
   
   // Utility functions
-  const unsigned size()
+  unsigned size()
   {
     return out->size();
   }
 
-  const idT getId()
+  idT getId()
   {
     return ID;
   }
 
   // Returns the ID of the destination node of the output edges at
   // ~pos~
-  const idT getEdgeDest(const unsigned pos)
+  idT getEdgeDest(const unsigned pos)
   {
     return out->at(pos);
   }

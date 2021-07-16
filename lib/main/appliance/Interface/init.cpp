@@ -10,7 +10,10 @@
 #include "Utils/error.hpp"
 #include "Utils/file.hpp"
 #include "Utils/num.hpp"
+#include "Utils/str.hpp"
 
+#include <string>
+#include <iostream>
 #include <stdexcept>
 
 using digraph = DS::digraph<ALG_TYPE>;
@@ -20,12 +23,13 @@ using namespace std;
 
 namespace Interface {
   
-init::init(int argc, char** argv) : inGraph(nullptr), numNodes(0)
+init::init(int argc, char** argv) : inGraph(nullptr)
 {
   const bool isResultValid = validateArguments(argc, argv);
   if (!isResultValid) {
     throw std::invalid_argument {"Invalid program arguments"\
-                                   "\nUsage: <program> <in-file>"};
+                                   "\nUsage: <program> <in-file>"\
+                                   " <mode>"};
   }
 
   // This loads inGraph
@@ -34,8 +38,15 @@ init::init(int argc, char** argv) : inGraph(nullptr), numNodes(0)
 # ifdef INTERFACE_INIT_PRINT_GRAPH
   printGraph();
 # endif
-
-  Alg::deltaStepping{inGraph};
+  
+  try {
+    Alg::deltaStepping{inGraph, inMode.c_str(), 
+                         outFileName.c_str()};
+  }
+  catch(std::exception&) {
+    destroy();
+    throw;
+  }
 }
 
 init::~init()
@@ -50,6 +61,7 @@ void init::destroy()
 
 // Checks if the number of arguments is correct.
 // Check if the file given at argv[0] exists.
+// Check if the mode string given has proper size.
 bool init::validateArguments(int argc, char** argv) const noexcept
 {
   if (argc != knumProgArgs) {
@@ -61,6 +73,14 @@ bool init::validateArguments(int argc, char** argv) const noexcept
     return false;
   }
 
+  if (char_traits<char>::length(argv[1]) > kmaxFileNameLen) {
+    return false;
+  }
+
+  if (char_traits<char>::length(argv[2]) > kmaxModeLen) {
+    return false;
+  }
+  
   return true;
 }
 
@@ -68,7 +88,7 @@ bool init::validateArguments(int argc, char** argv) const noexcept
 // file format is correct, of course.
 //
 // The file should come in the format:
-// [COMMENT COMMENT] where COMMENT ::= //*\n
+// [COMMENT -> COMMENT COMMENT] where COMMENT ::= //*\n
 // <number-of-nodes>
 // [<number-of-edges-node-1>]
 // [<number-of-edges-node-2>]
@@ -79,17 +99,18 @@ bool init::validateArguments(int argc, char** argv) const noexcept
 // [<node1>,<node0>]
 // [<node1>,<node2>]
 // ...
-//
-// FIXME: must transfer reception of number of edges to this
-// function.
 void init::processEntries(int argc, char** argv) noexcept(false)
 {
-  // We trust that argv[1] exists
+  // Read file name, mode, and then open the file and start reading
+  // it.
+  inFileName.assign(argv[1]);
+  outFileName = str::getOutName(inFileName);
+  inMode.assign(argv[2]);
   inFile.open(argv[1]);
   
   ignoreComments();
 
-  numNodes = -1;
+  int numNodes = -1;
   inFile >> numNodes;
   if (digraph::kmaxSize < numNodes || numNodes < 0) {
     throw std::logic_error{"Wrong input file format (numNodes)"};
@@ -98,13 +119,13 @@ void init::processEntries(int argc, char** argv) noexcept(false)
   // Array that tells how many edges each node has
   DS::array<unsigned> numEdges{numNodes, 0};
 
-  // FIXME
   // Build numEdges object
   unsigned i = 0;
   unsigned temp = -1;
   for (i = 0; i < numEdges.size(); ++i) {
     temp = -1;
     inFile >> temp;
+#   pragma GCC diagnostic ignored "-Wtype-limits"
     if (temp < 0) {
       throw std::logic_error{"Wrong input file format (numEdges)"};
     }
@@ -119,7 +140,7 @@ void init::processEntries(int argc, char** argv) noexcept(false)
   // At this point, the graph has been created, so we must be sure
   // to delete it if an exception occurs.
   try {
-    readEdges(numEdges);
+    readEdges(numEdges, numNodes);
   }
   catch(std::exception& e) {
     destroy();
@@ -127,7 +148,8 @@ void init::processEntries(int argc, char** argv) noexcept(false)
   }
 }
 
-void init::readEdges(DS::array<unsigned>& numEdges) noexcept(false)
+void init::readEdges(DS::array<unsigned>& numEdges, 
+                     const int numNodes) noexcept(false)
 {
   DEBUG(INTERFACE_INIT_DEBUG, "Start -- readEdges");
   // Edges in format <source node>,<destination node>
@@ -198,7 +220,7 @@ void init::readEdges(DS::array<unsigned>& numEdges) noexcept(false)
   DEBUG(INTERFACE_INIT_DEBUG, "End -- readEdges");
 }
 
-void init::ignoreComments()
+void init::ignoreComments() noexcept(false)
 {
   DEBUG(INTERFACE_INIT_DEBUG, "Start -- IgnoreComments");
 
@@ -212,6 +234,7 @@ void init::ignoreComments()
       while (inFile.good() && (c2 = inFile.get()) != '\n');
     }
     else {
+      // Notice the reverse order of putbacks.
       inFile.putback(c2);
       inFile.putback(c1);
         
@@ -231,7 +254,7 @@ void init::ignoreComments()
 
 // For every node in the graph, print its number of outgoing
 // edges, and each one of the destination nodes for these edges.
-void init::printGraph()
+void init::printGraph() noexcept(false)
 {
   register unsigned i = 0;
   register unsigned j = 0;

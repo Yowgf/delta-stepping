@@ -26,7 +26,7 @@ public:
   {
     checkPositiveSize(size);
 
-    arrSz = static_cast<const unsigned>(size);
+    arrSz = static_cast<unsigned>(size);
     fill(val);
   }
 
@@ -76,7 +76,7 @@ public:
   }
 
   // Container information
-  const unsigned size()
+  unsigned size()
   {
     return arrSz;
   }

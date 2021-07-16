@@ -7,7 +7,7 @@
 
 # Compiler command and flags
 CXX   := 
-FLAGS := -std=c++14 -g -Wall
+FLAGS := -std=c++14 -g -Wextra
 
 # Source directory
 SOURCE := lib

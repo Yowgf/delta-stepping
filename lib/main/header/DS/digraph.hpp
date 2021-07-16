@@ -63,6 +63,11 @@ public:
     return numNodes;
   }
 
+  unsigned getNumNodes()
+  {
+    return numNodes;
+  }
+
   // Reference to the node with id ~nodeId~.
   node* at(unsigned nodeId)
   {
@@ -94,6 +99,13 @@ private:
   void buildGraph(DS::array<unsigned>& numEdges)
   {
     try {
+      // It is of high importance to first allocate all the nodes
+      // for ~adjList~, and only then fill them with their edges.
+      //
+      // This arranges the memory in a better way, avoiding cache
+      // misses, since adjList is going to be used all the time, and
+      // nodes with close Id are more likely to be used within a
+      // small window of time.
       fillNewNodes();
       allocateEdges(numEdges);
     }
@@ -125,7 +137,7 @@ private:
     }
     
     register unsigned i = 0;
-    for (; i < numEdges.size(); ++i) {
+    for (i = 0; i < numEdges.size(); ++i) {
       adjList->at(i)->allocEdges(numEdges.at(i));
     }
   }

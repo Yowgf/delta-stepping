@@ -7,6 +7,8 @@
 // to be run on the target algorithm
 //===----------------------------------------------------------===//
 
+// TODO: fix validateArguments.
+
 #ifndef INIT_H
 #define INIT_H
 
@@ -25,12 +27,19 @@ public:
   ~init();
 
 private:
-  static constexpr int knumProgArgs = 2;
+  static constexpr int knumProgArgs = 3;
+  static constexpr unsigned kmaxFileNameLen = 0x100;
+  static constexpr unsigned kmaxModeLen = 0x100;
 
+  std::string inFileName;
+  std::string inMode;
+
+  // Built with inFileName
+  std::string outFileName;
   std::ifstream inFile;
 
+  // The graph is built in this class.
   digraph* inGraph;
-  int numNodes;
 
   // Integrity assurance. These functions pertain to making sure
   //   the program is safe to run.
@@ -43,12 +52,14 @@ private:
   // to ensure its validity.
   void processEntries(int argc, char** argv) noexcept(false);
   // Reads in the edges of the graph. Aux for ~processEntries~.
-  void readEdges(DS::array<unsigned>& numEdges) noexcept(false);
+  void readEdges(DS::array<unsigned>& numEdges, const int numNodes) 
+    noexcept(false);
   // Ignores comments that can come in the beggining of a file.
-  void ignoreComments();
+  void ignoreComments() noexcept(false);
   // This functions prints the graph. It is used just for debug
   // output.
-  void printGraph();
+  void printGraph() noexcept(false);
+  
 };
 
 }
