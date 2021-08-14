@@ -10,6 +10,8 @@
 
 #include "DS/array.hpp"
 
+#include <utility>
+
 namespace DS {
 
 constexpr int kmaxNumEdges = 0xFF;
@@ -18,7 +20,8 @@ template<typename valueType>
 class digraphNode {
 private:
   using idT = unsigned; // id Type
-  using outEdges = DS::array<idT>; // See DS/array.hpp
+  using weightT = int;
+  using outEdges = DS::array<std::pair<idT, weightT>>; // See DS/array.hpp
 
 public:
   digraphNode(const idT ID,
@@ -28,7 +31,7 @@ public:
     : ID(ID), value(value), out(nullptr)
   {
     if (numOut) {
-      out = new outEdges(numOut, 0);
+      out = new outEdges(numOut, std::make_pair(0, 0));
     }
   }
 
@@ -48,16 +51,16 @@ public:
     out = new outEdges(numEdges); // may throw bad_alloc
   }
 
-  // In the functions below, we expect that the user knows where to
-  // put the node (by providing the pos parameter).
+  // In the functions below, we expect that the user knows where to put the node
+  // (by providing the pos parameter).
   //
-  // This just goes to avoid having to store this information in
-  // every node.
-  void insertOut(const idT outNodeID, const unsigned pos)
+  // This just goes to avoid having to store this information in every node.
+  void insertOut(const idT outNodeID, const int weight, const unsigned pos)
     noexcept(false)
   {
     if (out != nullptr) {
-      out->at(pos) = outNodeID;
+      out->at(pos).first = outNodeID;
+      out->at(pos).second = weight;
     }
     else {
       throw std::logic_error{"Impossible to use nullptr outEdges"};
@@ -79,7 +82,17 @@ public:
   // ~pos~
   idT getEdgeDest(const unsigned pos)
   {
-    return out->at(pos);
+    return out->at(pos).first;
+  }
+
+  weightT getEdgeWeight(const unsigned pos)
+  {
+    return out->at(pos).second;
+  }
+
+  bool isLeaf()
+  {
+    return out == nullptr;
   }
 
   // End -- Utility functions

@@ -31,6 +31,9 @@ private:
   static constexpr unsigned kmaxFileNameLen = 0x100;
   static constexpr unsigned kmaxModeLen = 0x100;
 
+  static constexpr unsigned kmaxNodeId = 0xFFFFFFF;
+  static constexpr int kmaxWeight = 0xFFFFFFF;
+
   std::string inFileName;
   std::string inMode;
 
@@ -51,9 +54,11 @@ private:
   // Gets the graph ready to be used. Performs all necessary checks
   // to ensure its validity.
   void processEntries(int argc, char** argv) noexcept(false);
+
+  void openInFile(char const* fileArgName, const char* inModeArg);
+  
   // Reads in the edges of the graph. Aux for ~processEntries~.
-  void readEdges(DS::array<unsigned>& numEdges, const int numNodes) 
-    noexcept(false);
+  void readEdges() noexcept(false);
   // Ignores comments that can come in the beggining of a file.
   void ignoreComments() noexcept(false);
   // This functions prints the graph. It is used just for debug

@@ -11,5 +11,6 @@
 #include "array.hpp"
 #include "digraph.hpp"
 #include "digraphNode.hpp"
+#include "wEdge.hpp"
 
 #endif

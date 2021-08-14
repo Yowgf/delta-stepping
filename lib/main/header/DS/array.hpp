@@ -30,8 +30,8 @@ public:
     fill(val);
   }
 
-  array(const unsigned size) : array(size, 0) {}
-  array(const int size) : array(size, 0) {}
+  array(const unsigned size) : array(size, valueType()) {}
+  array(const int size) : array(size, valueType()) {}
 
   array() : arrSz(0), innerArr(nullptr) {}
 

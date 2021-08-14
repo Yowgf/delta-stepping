@@ -23,8 +23,10 @@ namespace Utils {
 // None of these macros are thread-safe
 
 // Log attribute att.
-#define LOGATT(att, isSupposedToPrint)\
-  fprintf((void) (cerr << #att << ": " << (att) << '\n');
+#define LOGATT(isSupposedToPrint, att)          \
+  if (isSupposedToPrint) {                      \
+    std::cerr << #att << ": " << (att) << '\n';      \
+  }
 
 // For the first two logging functions, it is not always certain
 // that we want to print the information given in every place we put

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------===//
 
 #include "Alg/deltaStepping.hpp"
+#include "DS/wEdge.hpp"
 #include "Interface/init.hpp"
 #include "Utils/error.hpp"
 #include "Utils/file.hpp"
@@ -15,8 +16,13 @@
 #include <string>
 #include <iostream>
 #include <stdexcept>
+#include <tuple>
+#include <vector>
+
+#include "boost/dynamic_bitset.hpp"
 
 using digraph = DS::digraph<ALG_TYPE>;
+using nodeIdT = unsigned;
 
 using namespace Utils;
 using namespace std;
@@ -84,63 +90,22 @@ bool init::validateArguments(int argc, char** argv) const noexcept
   return true;
 }
 
-// While processing the entries, this function should check if the
-// file format is correct, of course.
-//
-// The file should come in the format:
-// [COMMENT -> COMMENT COMMENT] where COMMENT ::= //*\n
-// <number-of-nodes>
-// [<number-of-edges-node-1>]
-// [<number-of-edges-node-2>]
-// ...
-// [<node0>,<node1>]
-// [<node0>,<node2>]
-// ...
-// [<node1>,<node0>]
-// [<node1>,<node2>]
+// [COMMENT -> COMMENT COMMENT] where COMMENT ::= %*.*\n
+// [<node1> <node2> <weight>]
+// [<node1> <node2> <weight>]
 // ...
 void init::processEntries(int argc, char** argv) noexcept(false)
 {
   // Read file name, mode, and then open the file and start reading
   // it.
-  inFileName.assign(argv[1]);
-  outFileName = str::getOutName(inFileName);
-  inMode.assign(argv[2]);
-  inFile.open(argv[1]);
-  
+  openInFile(argv[1], argv[2]);
+
   ignoreComments();
-
-  int numNodes = -1;
-  inFile >> numNodes;
-  if (digraph::kmaxSize < numNodes || numNodes < 0) {
-    throw std::logic_error{"Wrong input file format (numNodes)"};
-  }
-
-  // Array that tells how many edges each node has
-  DS::array<unsigned> numEdges{numNodes, 0};
-
-  // Build numEdges object
-  unsigned i = 0;
-  unsigned temp = -1;
-  for (i = 0; i < numEdges.size(); ++i) {
-    temp = -1;
-    inFile >> temp;
-#   pragma GCC diagnostic ignored "-Wtype-limits"
-    if (temp < 0) {
-      throw std::logic_error{"Wrong input file format (numEdges)"};
-    }
-
-    numEdges.at(i) = temp;
-  }
-
-  // Allocate all the digraph nodes here. This avoids memory
-  // fragmentation.
-  inGraph = new digraph(numNodes, numEdges);
 
   // At this point, the graph has been created, so we must be sure
   // to delete it if an exception occurs.
   try {
-    readEdges(numEdges, numNodes);
+    readEdges();
   }
   catch(std::exception& e) {
     destroy();
@@ -148,75 +113,94 @@ void init::processEntries(int argc, char** argv) noexcept(false)
   }
 }
 
-void init::readEdges(DS::array<unsigned>& numEdges, 
-                     const int numNodes) noexcept(false)
+void init::openInFile(char const* fileArgName, const char* inModeArg)
+{
+  inFileName.assign(fileArgName);
+  outFileName = str::getOutName(inFileName);
+  inMode.assign(inModeArg);
+  inFile.open(inFileName);
+}
+  
+void init::readEdges() noexcept(false)
 {
   DEBUG(INTERFACE_INIT_DEBUG, "Start -- readEdges");
-  // Edges in format <source node>,<destination node>
-  // Keep it as simple as possible, so that we avoid bugs.
+  // Edges in format <source node> <destination node> <weight>
   //
-  // Also, do some basic checks that assure the validity of the
-  // generated graph.
-  int nodeId1 = -1;         // Node on the left
-  int nodeId2 = -1;         // Node on the right
-  int curNode = 0;          // We are inserting edges for this node
-  unsigned edgeCounter = 0; // How many edges have we inserted for
-                            // the current node
-  unsigned lineCounter = 1; // Used to debug. Start from second line
-  while(inFile.good()) {
-    nodeId1 = nodeId2 = -1; // Make sure we receive update on these.
+  // We use a vector because we assume that the input file will only include
+  // edges for nodes in the graph, so that we are not wasting memory.
+  //
+  // Note that graphNodes and graphEdges should have the same size.
+  const unsigned bitsetAllocSz = 0xFFFF;
+  boost::dynamic_bitset<> graphNodes(bitsetAllocSz);
+  vector<nodeIdT> numEdges(bitsetAllocSz, 0);
+  vector<DS::wEdge<int, int, int>> graphEdges;
 
-    inFile >> nodeId1;
-    if (!inFile.good()) break; // Hopefully EOF
+  // TODO: use these values! (currently ignoring)
+  // Read header
+  int m = -1;
+  int n = -1;
+  int numNonZeroNodes = -1;
+  inFile >> m >> n >> numNonZeroNodes;
+  if (m == -1) throw logic_error{"(readEdges) header -- unexpected EOF"};
 
-    if (curNode != nodeId1) {
-      // Check if we are not moving backwards over the node ids
-      if (nodeId1 < curNode) {
-        throw std::logic_error{
-          string("File has wrong order of nodes! (") +
-            to_string(curNode) + " to " + to_string(nodeId1) + ')'};
-      }
 
-      // Check if we have all the edges that they promised
-      if (edgeCounter < numEdges.at(curNode)) {
-        throw std::logic_error{
-          string("File provided too few edges for node ") +
-            to_string(curNode) + " (Expecting " + 
-            to_string(numEdges.at(curNode))};
-      }
+  unsigned numNodes = 0;
+  unsigned lineCounter = 1;
+  int nodeMaxId = -1;
+  LOG(1, "Starting to read inFile for edges");
+  while (inFile.good()) {
+    LOGATT(INTERFACE_INIT_DEBUG, lineCounter);
 
-      // At this point we can update the current node and reset the
-      // edges counter.
-      curNode = nodeId1;
-      edgeCounter = 0;
+    // <node1, node2, weight>
+    DS::wEdge<int, int, int> edge(-1, -1, -1);
+  
+    inFile >> edge.node1 >> edge.node2 >> edge.weight;
+    if (edge.node1 == -1) break; // Hopefully true means EOF
+
+    // Check if inputs are in the right range
+    num<int>::checkInRange(edge.node1, 0, kmaxNodeId - 1);
+    num<int>::checkInRange(edge.node1, 0, kmaxNodeId - 1);
+    num<int>::checkInRange(edge.weight, 0, kmaxWeight - 1);
+
+    // If needed, resize
+    nodeMaxId = num<int>::max(edge.node1, edge.node2);
+#   pragma GCC diagnostic ignored "-Wsign-compare"
+    if (nodeMaxId > graphNodes.size()) {
+      graphNodes.resize(num<int>::max(nodeMaxId,
+                                      graphNodes.size() + bitsetAllocSz));
+      numEdges.resize(num<int>::max(nodeMaxId,
+                                    numEdges.size() + bitsetAllocSz), 0);
     }
 
-    // Next, we need a comma
-    file::checkIfstreamNextChar(inFile, ',', lineCounter);
-    
-    // Then read in the second node id
-    inFile >> nodeId2;
+    // Update graphNodes, graphEdges, numEdges
+    graphNodes[edge.node1] = true;
+    graphNodes[edge.node2] = true;
 
-    // Check that we actually read the node Id
-    file::checkIfstreamGood(inFile, lineCounter);
+    graphEdges.push_back(edge);
 
-    // Check if both inputs are in the right range
-    num<int>::checkInRange(nodeId1, 0, numNodes - 1);
-    num<int>::checkInRange(nodeId2, 0, numNodes - 1);
+    LOG(INTERFACE_INIT_DEBUG,
+        "About to insert edge %d %d", edge.node1, edge.node2);
+    numEdges.at(edge.node1)++;
 
-    // Insert edge in graph
-    if (edgeCounter < numEdges.at(nodeId1)) {
-      inGraph->insertEdge(nodeId1, nodeId2, edgeCounter);
-      edgeCounter++;
-    }
-    else {
-      throw std::logic_error{
-        string("File provided too many edges for node ") +
-          to_string(curNode)};
-    }
-    
     lineCounter++;
   }
+  LOG(1, "Done reading inFile for edges");
+
+  if (!inFile.eof()) {
+    throw logic_error{"(readEdges) encountered error while read input file"};
+  }
+
+  LOG(1, "A");
+
+  // Allocate all the digraph nodes here. This avoids memory fragmentation.
+  inGraph = new digraph(static_cast<unsigned>(graphNodes.count() + 1), numEdges);
+
+  LOG(1, "Allocated graph");
+  
+  for (auto edge : graphEdges) {
+    inGraph->insertEdge(edge.node1, edge.node2, edge.weight, --numEdges.at(edge.node1));
+  }
+
   DEBUG(INTERFACE_INIT_DEBUG, "End -- readEdges");
 }
 
@@ -224,29 +208,17 @@ void init::ignoreComments() noexcept(false)
 {
   DEBUG(INTERFACE_INIT_DEBUG, "Start -- IgnoreComments");
 
-  // Get two '/' from file. Then ignore the rest of the line.
-  // Check for syntax errors.
-  char c1, c2;
-  c1 = c2 = '\0';
-  unsigned lineCounter = 0;
-  while (inFile.good() && (c1 = inFile.get()) == '/') {
-    if ((c2 = inFile.get()) == '/') {
-      while (inFile.good() && (c2 = inFile.get()) != '\n');
-    }
-    else {
-      // Notice the reverse order of putbacks.
-      inFile.putback(c2);
-      inFile.putback(c1);
-        
-      throw std::logic_error{
-        "(IgnoreComments) Syntax error in input file"};
-    }
-
-    lineCounter++;
+  const unsigned maxLineSz = 0xFFFF;
+  while(inFile.good() && inFile.peek() == '%') {
+    // Ignore line
+    while (inFile.get() != '\n');
   }
-  // That means that we left the loop by the second condition.
-  if (inFile.good()) {
-    inFile.putback(c1);
+
+  if (inFile.eof()) {
+    throw logic_error{"(ignoreComments) file has no contents."};
+  }
+  else if (!inFile.good()) {
+    throw logic_error{"(ignoreComments) error reading file."};
   }
 
   DEBUG(INTERFACE_INIT_DEBUG, "End -- IgnoreComments");
@@ -263,12 +235,14 @@ void init::printGraph() noexcept(false)
   std::cout << "Printing input graph\n";
   std::cout << '\n';
   for (i = 0; i < inGraph->size(); ++i) {
-    std::cout << '\n';
-    std::cout << "Node " << inGraph->at(i)->getId() << ":\n";
+    if (!inGraph->at(i)->isLeaf()) {
+      std::cout << '\n';
+      std::cout << "Node " << inGraph->at(i)->getId() << ":\n";
 
-    for (j = 0; j < inGraph->at(i)->size(); ++j) {
-      std::cout << i << ',' << inGraph->at(i)->getEdgeDest(j)
-                << '\n';
+      for (j = 0; j < inGraph->at(i)->size(); ++j) {
+        std::cout << i << ',' << inGraph->at(i)->getEdgeDest(j) << ',' << 
+                  inGraph->at(i)->getEdgeWeight(j) << '\n';
+      }
     }
   }
   std::cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";

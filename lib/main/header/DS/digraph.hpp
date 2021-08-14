@@ -16,8 +16,10 @@
 #define DIGRAPH_H
 
 #include "DS/digraphNode.hpp"
+#include "Utils/error.hpp"
 
 #include <stdexcept>
+#include <vector>
 
 namespace DS {
   
@@ -29,13 +31,30 @@ public:
   // Max number of nodes
   static constexpr int kmaxSize = 0xFFFF;
 
-  digraph(const unsigned knumNodes,
+  explicit digraph(const unsigned knumNodes,
           DS::array<unsigned>& numEdges) : numNodes(knumNodes)
   {
     buildGraph(numEdges);
   }
 
-  digraph(const int knumNodes, DS::array<unsigned>& numEdges)
+  explicit digraph(const int knumNodes, DS::array<unsigned>& numEdges)
+    : numNodes(knumNodes)
+  {
+    if (knumNodes < 0) {
+      throw std::domain_error{"Cannot generate graph with negative"\
+                                "number of nodes"};
+    }
+    
+    buildGraph(numEdges);
+  }
+
+  explicit digraph(const unsigned knumNodes,
+          std::vector<unsigned>& numEdges) : numNodes(knumNodes)
+  {
+    buildGraph(numEdges);
+  }
+
+  explicit digraph(const int knumNodes, std::vector<unsigned>& numEdges)
     : numNodes(knumNodes)
   {
     if (knumNodes < 0) {
@@ -51,10 +70,10 @@ public:
     destroy();
   }
 
-  void insertEdge(const int nodeId1, const int nodeId2, 
+  void insertEdge(const int nodeId1, const int nodeId2, const int weight,
                   const int pos)
   {
-    adjList->at(nodeId1)->insertOut(nodeId2, pos);
+    adjList->at(nodeId1)->insertOut(nodeId2, weight, pos);
   }   
 
   // Utility functions
@@ -115,6 +134,18 @@ private:
     }
   }
 
+  void buildGraph(std::vector<unsigned>& numEdges)
+  {
+    try {
+      fillNewNodes();
+      allocateEdges(numEdges);
+    }
+    catch (std::exception& e) {
+      destroy();
+      throw;
+    }
+  }
+
   void fillNewNodes() noexcept(false)
   {
     adjList = new dinVec{numNodes, nullptr};
@@ -128,18 +159,27 @@ private:
   //
   // Note that we do it all at once. This avoids memory
   // fragmentation, and thus poor performance.
-  void allocateEdges(DS::array<unsigned>& numEdges)
-    noexcept(false)
+  void allocateEdges(DS::array<unsigned>& numEdges) noexcept(false)
   {
-    if (numEdges.size() != numNodes) {
-      throw std::logic_error{
-        "Incompatible size of numEdges array for allocation"};
-    }
-    
     register unsigned i = 0;
     for (i = 0; i < numEdges.size(); ++i) {
-      adjList->at(i)->allocEdges(numEdges.at(i));
+      if (numEdges.at(i)) {
+        adjList->at(i)->allocEdges(numEdges.at(i));
+      }
     }
+  }
+
+  void allocateEdges(std::vector<unsigned>& numEdges) noexcept(false)
+  {
+    LOG(1, "Start -- allocateEdges");
+    register unsigned i = 0;
+    for (i = 0; i < numEdges.size(); ++i) {
+      if (numEdges.at(i) != 0) {
+        LOGATT(1, i);
+        adjList->at(i)->allocEdges(numEdges.at(i));
+      }
+    }
+    LOG(1, "End -- allocateEdges");
   }
 
 };
