@@ -9,6 +9,7 @@
 #define NODE_H
 
 #include "DS/array.hpp"
+#include "Utils/defs.hpp"
 
 #include <utility>
 
@@ -19,27 +20,26 @@ constexpr int kmaxNumEdges = 0xFF;
 template<typename valueType>
 class digraphNode {
 private:
-  using idT = unsigned; // id Type
-  using weightT = int;
-  using outEdges = DS::array<std::pair<idT, weightT>>; // See DS/array.hpp
+  using outEdgeT = std::pair<nodeIdT, weightT>;
+  using outEdgesT = DS::array<outEdgeT>;
 
 public:
-  digraphNode(const idT ID,
+  digraphNode(const nodeIdT ID,
               const valueType& value,
               const unsigned numOut  // Number of outgoing edges
               )
     : ID(ID), value(value), out(nullptr)
   {
     if (numOut) {
-      out = new outEdges(numOut, std::make_pair(0, 0));
+      out = new outEdgesT(numOut, std::make_pair(0, 0));
     }
   }
 
   // These constructors create nodes with 0 outgoing edges.
-  digraphNode(const idT ID, const valueType& value)
+  digraphNode(const nodeIdT ID, const valueType& value)
     : digraphNode(ID, value, 0) {}
 
-  digraphNode(const idT ID) : digraphNode(ID, 0) {}
+  digraphNode(const nodeIdT ID) : digraphNode(ID, 0) {}
 
   ~digraphNode()
   {
@@ -48,14 +48,15 @@ public:
 
   void allocEdges(const unsigned numEdges) noexcept(false)
   {
-    out = new outEdges(numEdges); // may throw bad_alloc
+    out = new outEdgesT(numEdges); // may throw bad_alloc
   }
 
   // In the functions below, we expect that the user knows where to put the node
   // (by providing the pos parameter).
   //
   // This just goes to avoid having to store this information in every node.
-  void insertOut(const idT outNodeID, const int weight, const unsigned pos)
+  void insertOut(const nodeIdT outNodeID, const weightT weight,
+                 const unsigned pos)
     noexcept(false)
   {
     if (out != nullptr) {
@@ -63,7 +64,7 @@ public:
       out->at(pos).second = weight;
     }
     else {
-      throw std::logic_error{"Impossible to use nullptr outEdges"};
+      throw std::logic_error{"Impossible to use nullptr outEdgesT"};
     }
   }
   
@@ -73,14 +74,19 @@ public:
     return out->size();
   }
 
-  idT getId()
+  nodeIdT getId()
   {
     return ID;
   }
 
+  outEdgesT* getOutEdges()
+  {
+    return out;
+  }
+
   // Returns the ID of the destination node of the output edges at
   // ~pos~
-  idT getEdgeDest(const unsigned pos)
+  nodeIdT getEdgeDest(const unsigned pos)
   {
     return out->at(pos).first;
   }
@@ -98,9 +104,9 @@ public:
   // End -- Utility functions
 
 private:
-  const idT ID;
+  const nodeIdT ID;
   valueType value;
-  outEdges* out;
+  outEdgesT* out;
 
   void destroy()
   {

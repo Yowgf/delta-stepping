@@ -20,7 +20,7 @@
 namespace Interface {
 
 class init {
-  using digraph = DS::digraph<ALG_TYPE>;
+  using digraph = DS::digraph<nodeIdT>;
   
 public:
   init(int argc, char** argv);
@@ -35,6 +35,7 @@ private:
   static constexpr int kmaxWeight = 0xFFFFFFF;
 
   std::string inFileName;
+  bool inFileHasHeader;
   std::string inMode;
 
   // Built with inFileName

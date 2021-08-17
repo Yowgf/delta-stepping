@@ -6,20 +6,17 @@
 //===----------------------------------------------------------===//
 
 #include "Alg/deltaStepping.hpp"
-
 #include "Utils/str.hpp"
 
-#include <cfloat>
+#include <cmath>
 #include <stdexcept>
-
-#define INF FLT_MAX
 
 using namespace std;
 using namespace Utils;
 
 namespace Alg {
 
-using digraph = DS::digraph<ALG_TYPE>;
+using digraph = DS::digraph<nodeIdT>;
 
 
 // Software engineering strategy:
@@ -53,13 +50,13 @@ using digraph = DS::digraph<ALG_TYPE>;
 // - How to map the aggregated tasks to threads?
 deltaStepping::deltaStepping(digraph* inGraph, const char* mode, 
                 const char* outFileName)
+  : sourceNode(0), // TODO: find more sofisticated way to decide on this
+    rm(inGraph->getNumNodes())
 {
   // Intialize internal variables
-  assignGraph(inGraph);
-  openOutFile(outFileName);
+  initInternalVars(inGraph, mode, outFileName);
 
   // TODO: is there anything that should be done under every mode?
-
   const string modeStr{mode};
   if (modeStr == "sequential") 
     sequential();
@@ -69,9 +66,6 @@ deltaStepping::deltaStepping(digraph* inGraph, const char* mode,
     parallelBucketFusion();
   else
     invalidMode(mode);
-  // Allocate buckets
-
-  // Initialize the distances to infinity, except for source. 
 }
 
 deltaStepping::~deltaStepping()
@@ -87,10 +81,16 @@ deltaStepping::~deltaStepping()
 // Aux functions for the constructor.
 //===----------------------------------------------------------===//
 
+void deltaStepping::initInternalVars(digraph* inGraph, const char* mode, 
+                const char* outFileName)
+{
+  assignGraph(inGraph);
+  openOutFile(outFileName);
+}
+
 void deltaStepping::assignGraph(digraph* inGraph) {
   if (inGraph == nullptr) {
-    throw invalid_argument{
-      string("(assignGraph) nullptr inGraph argument")};
+    throw invalid_argument{"(assignGraph) nullptr inGraph argument"};
   }
   diGraph = inGraph;
 }
@@ -103,8 +103,7 @@ void deltaStepping::openOutFile(const char* outFileName)
 void deltaStepping::invalidMode(const char* mode)
 {
   throw invalid_argument{
-    string("Unknown option '") + mode +
-      "' for the deltaStepping algorithm"};
+    string("Unknown option '") + mode + "' for the deltaStepping algorithm"};
 }
 
 //===----------------------------------------------------------===//
@@ -112,13 +111,281 @@ void deltaStepping::invalidMode(const char* mode)
 //===----------------------------------------------------------===//
 
 
+//===----------------------------------------------------------===//
+// Sequential algorithm
+//===----------------------------------------------------------===//
 void deltaStepping::sequential()
-{}
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::sequential");
 
+  preprocessing();
+
+  
+  while (true) {
+
+    buckT* minBuck = getMinBuck();
+    if (minBuck == nullptr) // Means bucks is empty
+      break;
+
+    rm.reset();
+
+    while (!minBuck->empty()) {
+      if (ALG_DELTASTEPPING_DEBUG)
+        printBuck(*minBuck);
+
+      // Find requests for light edges
+      req = findRequests(*minBuck, 0);
+      printReq(req);
+
+      bitsetListUnion(rm, *minBuck);
+      printBs(rm);
+
+      // Clear the bucket
+      minBuck->clear();
+
+      // Relax the light edges requests (may reintroduce some nodes)
+      relaxRequests(req);
+      printDists(dists);
+    }
+
+    LOG(1, "Start -- heavy edges");
+    // Process requests for heavy edges
+    req = findRequests(rm, 1);
+    relaxRequests(req);
+    LOG(1, "End -- heavy edges");
+
+    // Recycle buckets
+    recycleBucks();
+  }
+  
+
+  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::sequential");
+}
+
+void deltaStepping::preprocessing()
+{
+  // Allocate buckets and distances
+  initBucksDists();
+}
+
+// FIXME: for this to work, we need support from other procedures, to always
+// maintain the minimum bucket at the front of the bucks container.
+buckT* deltaStepping::getMinBuck()
+{
+  for (auto buck : bucks) {
+    if (!buck.empty()) {
+      return &bucks.front();
+    }
+  }
+  return nullptr;
+}
+
+void deltaStepping::initBucksDists()
+{
+  initBucks();
+  initDists();
+}
+
+// Initialize buckets
+void deltaStepping::initBucks()
+{
+  const unsigned numBuckets = 
+    static_cast<unsigned>(ceil(diGraph->getMaxEdgeWeight() / delta) + 1);
+  LOGATT(ALG_DELTASTEPPING_DEBUG, numBuckets);
+
+  bucks.resize(numBuckets);
+}
+
+// Initialize tentative distances
+// TODO: make sure this is correct.
+void deltaStepping::initDists()
+{
+  // Initialize the distances to infinity, except for sourceNode
+  dists.resize(diGraph->size(), infDist);
+  relax(sourceNode, 0);
+}
+
+void deltaStepping::relax(nodeIdT nid, distT newDist)
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "relaxing node %u with tentative distance %u",
+      nid, newDist);
+  if (dists.at(nid) != infDist) {
+    if (newDist < dists.at(nid)) {
+      bucks.at(dists.at(nid) / delta).remove(nid);
+      bucks.at(newDist / delta).push_back(nid);
+      dists.at(nid) = newDist;
+    }
+  }
+  else {
+    bucks.at(newDist / delta).push_back(nid);    
+    dists.at(nid) = newDist;
+  }
+}
+
+// TODO: to optimize this function, find both light and heavy requests at once,
+// for the nodes being searched.
+reqT deltaStepping::findRequests(const buckT& curBuck, const unsigned mode)
+{
+  switch (mode) {
+    case 0:
+      return findRequestsAux(curBuck, isLight);
+    case 1:
+      return findRequestsAux(curBuck, isHeavy);
+    default:
+      throw std::invalid_argument{
+        string("(findRequests) Invalid mode ") + to_string(mode)};
+  }
+}
+
+reqT deltaStepping::findRequestsAux(const buckT& curBuck, 
+                                    bool (*f)(weightT))
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- findRequestsAux");
+  reqT req;
+  for (auto nid : curBuck) {
+    auto* edges = diGraph->at(nid)->getOutEdges();
+    if (edges != nullptr) {
+      for (unsigned i = 0; i < edges->size(); ++i) {
+        weightT edgeWeight = edges->at(i).second;
+        if (f(edgeWeight)) {
+          req.push_back(std::make_pair(i, dists.at(i) + edgeWeight));
+        }
+      }
+    }
+  }
+  return req;
+  LOG(ALG_DELTASTEPPING_DEBUG, "End -- findRequestsAux");
+}
+
+// TODO: to optimize this function, find both light and heavy requests at once,
+// for the nodes being searched.
+reqT deltaStepping::findRequests(const boost::dynamic_bitset<>& curBuck,
+                                 const unsigned mode)
+{
+  switch (mode) {
+    case 0:
+      return findRequestsAux(curBuck, isLight);
+    case 1:
+      return findRequestsAux(curBuck, isHeavy);
+    default:
+      throw std::invalid_argument{
+        string("(findRequests) Invalid mode ") + to_string(mode)};
+  }
+}
+
+reqT deltaStepping::findRequestsAux(const boost::dynamic_bitset<>& curBuck, 
+                                    bool (*f)(weightT))
+{
+  reqT req;
+  for (unsigned nid = 0; nid < curBuck.size(); ++nid) {
+    if (curBuck[nid]) {
+      auto* edges = diGraph->at(nid)->getOutEdges();
+      if (edges != nullptr) {
+        for (unsigned i = 0; i < edges->size(); ++i) {
+          weightT edgeWeight = edges->at(i).second;
+          if (f(edgeWeight)) {
+            req.push_back(std::make_pair(i, dists.at(i) + edgeWeight));
+          }
+        }
+      }
+    }
+  }
+  return req;
+}
+
+void deltaStepping::relaxRequests(reqT& reqs)
+{
+  for (auto req : reqs)
+    relax(req.first, req.second);
+}
+
+bool deltaStepping::isLight(weightT w)
+{
+  return w <= delta;
+}
+
+bool deltaStepping::isHeavy(weightT w)
+{
+  return w > delta;
+}
+
+void deltaStepping::bitsetListUnion(boost::dynamic_bitset<>& bs, 
+                                    const buckT& ls)
+{
+  for (auto nid : ls) {
+    bs[nid] = 1;
+  }
+}
+
+void deltaStepping::recycleBucks()
+{
+  
+}
+
+//===----------------------------------------------------------===//
+// Parallel algorithm
+//===----------------------------------------------------------===//
 void deltaStepping::parallel()
-{}
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallel");
+  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallel");
+}
 
+
+//===----------------------------------------------------------===//
+// Parallel algorithm with bucket fusion
+//===----------------------------------------------------------===//
 void deltaStepping::parallelBucketFusion()
-{}
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallelBucketFusion");
+  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallelBucketFusion");
+}
+
+//===----------------------------------------------------------===//
+// Debugging procedures
+//===----------------------------------------------------------===//
+void deltaStepping::printBuck(buckT& buck)
+{
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+  std::cerr << "Printing bucket\n";
+  for (auto nid : buck) {
+    std::cerr << nid << ' ';
+  }
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+}
+
+void deltaStepping::printReq(reqT& reqs)
+{
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+  std::cerr << "Printing Request\n";
+  for (auto req : reqs) {
+    std::cerr << '(' << req.first << ", " << req.second << ") ";
+  }
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+}
+
+void deltaStepping::printBs(boost::dynamic_bitset<>& bs)
+{
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+  std::cerr << "Printing Bitset\n";
+  for (unsigned i = 0; i < bs.size(); ++i) {
+    if (bs[i]) {
+      std::cerr << i << ' ';
+    }
+  }
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+}
+
+void deltaStepping::printDists(distsT& dists)
+{
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+  std::cerr << "Printing (Tentative) Distances\n";
+  for (unsigned i = 0; i < dists.size(); ++i) {
+    if (dists.at(i) != infDist) {
+      std::cerr << i << ": " << dists.at(i) << ", ";
+    }
+  }
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+}
 
 }

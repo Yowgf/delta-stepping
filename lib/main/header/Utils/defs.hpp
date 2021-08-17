@@ -8,11 +8,19 @@
 #define DEFS_H
 
 #define MEASURE_TIME // Activate time measuring
-#define ALG_TYPE int
 
-// Put here any debugging control macros.
+// Types used in the algorithm
+typedef unsigned nodeIdT;
+typedef unsigned weightT;
+
+// Put here any debugging control macros
+#define ALG_DELTASTEPPING_DEBUG 0
+
+#define DS_DIGRAPH_DEBUG 0
+
 #define INTERFACE_INIT_DEBUG 0
-#define INTERFACE_INIT_PRINT_GRAPH 1
+#define INTERFACE_INIT_PRINT_GRAPH 0
+
 
 #endif // #ifndef DEFS_H
 

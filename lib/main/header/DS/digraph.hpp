@@ -18,6 +18,7 @@
 #include "DS/digraphNode.hpp"
 #include "Utils/error.hpp"
 
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -32,13 +33,14 @@ public:
   static constexpr int kmaxSize = 0xFFFF;
 
   explicit digraph(const unsigned knumNodes,
-          DS::array<unsigned>& numEdges) : numNodes(knumNodes)
+          DS::array<unsigned>& numEdges)
+    : numNodes(knumNodes), maxEdgeWeight(std::numeric_limits<weightT>::min())
   {
     buildGraph(numEdges);
   }
 
   explicit digraph(const int knumNodes, DS::array<unsigned>& numEdges)
-    : numNodes(knumNodes)
+    : numNodes(knumNodes), maxEdgeWeight(std::numeric_limits<weightT>::min())
   {
     if (knumNodes < 0) {
       throw std::domain_error{"Cannot generate graph with negative"\
@@ -49,13 +51,14 @@ public:
   }
 
   explicit digraph(const unsigned knumNodes,
-          std::vector<unsigned>& numEdges) : numNodes(knumNodes)
+          std::vector<unsigned>& numEdges)
+    : numNodes(knumNodes), maxEdgeWeight(std::numeric_limits<weightT>::min())
   {
     buildGraph(numEdges);
   }
 
   explicit digraph(const int knumNodes, std::vector<unsigned>& numEdges)
-    : numNodes(knumNodes)
+    : numNodes(knumNodes), maxEdgeWeight(std::numeric_limits<weightT>::min())
   {
     if (knumNodes < 0) {
       throw std::domain_error{"Cannot generate graph with negative"\
@@ -70,25 +73,33 @@ public:
     destroy();
   }
 
-  void insertEdge(const int nodeId1, const int nodeId2, const int weight,
-                  const int pos)
+  inline void insertEdge(const int nodeId1, const int nodeId2, 
+                         const weightT weight, const int pos)
   {
+    if (weight > maxEdgeWeight) {
+      maxEdgeWeight = weight;
+    }
     adjList->at(nodeId1)->insertOut(nodeId2, weight, pos);
   }   
 
   // Utility functions
-  unsigned size()
+  inline unsigned size()
   {
     return numNodes;
   }
 
-  unsigned getNumNodes()
+  inline unsigned getNumNodes()
   {
     return numNodes;
+  }
+
+  inline weightT getMaxEdgeWeight()
+  {
+    return maxEdgeWeight;
   }
 
   // Reference to the node with id ~nodeId~.
-  node* at(unsigned nodeId)
+  inline node* at(unsigned nodeId)
   {
     return adjList->at(nodeId);
   }
@@ -96,6 +107,7 @@ private:
   // Adjacency list. Since the graph is of fixed size, we use a
   // vector.
   unsigned numNodes;
+  weightT maxEdgeWeight;
   dinVec* adjList;
 
   // This should only be called if there was some failure when
@@ -171,15 +183,14 @@ private:
 
   void allocateEdges(std::vector<unsigned>& numEdges) noexcept(false)
   {
-    LOG(1, "Start -- allocateEdges");
+    LOG(DS_DIGRAPH_DEBUG, "Start -- allocateEdges");
     register unsigned i = 0;
     for (i = 0; i < numEdges.size(); ++i) {
       if (numEdges.at(i) != 0) {
-        LOGATT(1, i);
         adjList->at(i)->allocEdges(numEdges.at(i));
       }
     }
-    LOG(1, "End -- allocateEdges");
+    LOG(DS_DIGRAPH_DEBUG, "End -- allocateEdges");
   }
 
 };

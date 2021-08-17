@@ -15,21 +15,21 @@
 
 #include <string>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
 
 #include "boost/dynamic_bitset.hpp"
 
-using digraph = DS::digraph<ALG_TYPE>;
-using nodeIdT = unsigned;
+using digraph = DS::digraph<nodeIdT>;
 
 using namespace Utils;
 using namespace std;
 
 namespace Interface {
   
-init::init(int argc, char** argv) : inGraph(nullptr)
+init::init(int argc, char** argv) : inFileHasHeader(false), inGraph(nullptr)
 {
   const bool isResultValid = validateArguments(argc, argv);
   if (!isResultValid) {
@@ -41,7 +41,7 @@ init::init(int argc, char** argv) : inGraph(nullptr)
   // This loads inGraph
   processEntries(argc, argv);
 
-# ifdef INTERFACE_INIT_PRINT_GRAPH
+# if INTERFACE_INIT_PRINT_GRAPH == 1
   printGraph();
 # endif
   
@@ -133,33 +133,37 @@ void init::readEdges() noexcept(false)
   const unsigned bitsetAllocSz = 0xFFFF;
   boost::dynamic_bitset<> graphNodes(bitsetAllocSz);
   vector<nodeIdT> numEdges(bitsetAllocSz, 0);
-  vector<DS::wEdge<int, int, int>> graphEdges;
+  vector<DS::wEdge<int, int, int> > graphEdges;
 
   // TODO: use these values! (currently ignoring)
   // Read header
   int m = -1;
   int n = -1;
   int numNonZeroNodes = -1;
-  inFile >> m >> n >> numNonZeroNodes;
-  if (m == -1) throw logic_error{"(readEdges) header -- unexpected EOF"};
+
+  if (inFileHasHeader) {
+    inFile >> m >> n >> numNonZeroNodes;
+    if (m == -1) throw logic_error{"(readEdges) header -- unexpected EOF"};
+  }
 
 
   unsigned numNodes = 0;
   unsigned lineCounter = 1;
   int nodeMaxId = -1;
-  LOG(1, "Starting to read inFile for edges");
   while (inFile.good()) {
-    LOGATT(INTERFACE_INIT_DEBUG, lineCounter);
+    if (!lineCounter % 100)
+      LOGATT(INTERFACE_INIT_DEBUG, lineCounter);
 
     // <node1, node2, weight>
     DS::wEdge<int, int, int> edge(-1, -1, -1);
   
     inFile >> edge.node1 >> edge.node2 >> edge.weight;
-    if (edge.node1 == -1) break; // Hopefully true means EOF
+    if (edge.node1 == -1) 
+      break; // Hopefully true means EOF
 
     // Check if inputs are in the right range
-    num<int>::checkInRange(edge.node1, 0, kmaxNodeId - 1);
-    num<int>::checkInRange(edge.node1, 0, kmaxNodeId - 1);
+    num<int>::checkInRange(edge.node1, 1, kmaxNodeId - 1);
+    num<int>::checkInRange(edge.node2, 1, kmaxNodeId - 1);
     num<int>::checkInRange(edge.weight, 0, kmaxWeight - 1);
 
     // If needed, resize
@@ -176,6 +180,10 @@ void init::readEdges() noexcept(false)
     graphNodes[edge.node1] = true;
     graphNodes[edge.node2] = true;
 
+    // Fix node ids. Files should come with range starting from 1, but we want
+    // it starting from 0. This makes everything easier, later on.
+    edge.node1--;
+    edge.node2--;
     graphEdges.push_back(edge);
 
     LOG(INTERFACE_INIT_DEBUG,
@@ -184,35 +192,36 @@ void init::readEdges() noexcept(false)
 
     lineCounter++;
   }
-  LOG(1, "Done reading inFile for edges");
 
   if (!inFile.eof()) {
     throw logic_error{"(readEdges) encountered error while read input file"};
   }
 
-  LOG(1, "A");
-
   // Allocate all the digraph nodes here. This avoids memory fragmentation.
-  inGraph = new digraph(static_cast<unsigned>(graphNodes.count() + 1), numEdges);
-
-  LOG(1, "Allocated graph");
+  inGraph = new digraph(static_cast<unsigned>(graphNodes.count()), numEdges);
   
   for (auto edge : graphEdges) {
-    inGraph->insertEdge(edge.node1, edge.node2, edge.weight, --numEdges.at(edge.node1));
+    inGraph->insertEdge(edge.node1, edge.node2, edge.weight,
+                        --numEdges.at(edge.node1));
   }
 
   DEBUG(INTERFACE_INIT_DEBUG, "End -- readEdges");
 }
 
+// Additionally marks if the file has a %%Header
 void init::ignoreComments() noexcept(false)
 {
   DEBUG(INTERFACE_INIT_DEBUG, "Start -- IgnoreComments");
 
   const unsigned maxLineSz = 0xFFFF;
   while(inFile.good() && inFile.peek() == '%') {
+    inFile.get();
+    if (inFile.peek() == '%') inFileHasHeader = true;
     // Ignore line
-    while (inFile.get() != '\n');
+    while (inFile.good() && inFile.get() != '\n');
   }
+
+  LOGATT(INTERFACE_INIT_DEBUG, inFileHasHeader);
 
   if (inFile.eof()) {
     throw logic_error{"(ignoreComments) file has no contents."};
@@ -245,9 +254,7 @@ void init::printGraph() noexcept(false)
       }
     }
   }
-  std::cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
-  // Print the number of outgoing edges
-  
+  std::cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";  
 }
 
 
