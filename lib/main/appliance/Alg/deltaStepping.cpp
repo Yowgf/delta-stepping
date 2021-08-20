@@ -135,24 +135,25 @@ void deltaStepping::sequential()
 
       // Find requests for light edges
       req = findRequests(*minBuck, 0);
-      printReq(req);
+      if (ALG_DELTASTEPPING_DEBUG)
+	printReq(req);
 
       bitsetListUnion(rm, *minBuck);
-      printBs(rm);
+      if (ALG_DELTASTEPPING_DEBUG)
+	printBs(rm);
 
       // Clear the bucket
       minBuck->clear();
 
       // Relax the light edges requests (may reintroduce some nodes)
       relaxRequests(req);
-      printDists(dists);
+      if (ALG_DELTASTEPPING_DEBUG)
+	printDists(dists);
     }
 
-    LOG(1, "Start -- heavy edges");
     // Process requests for heavy edges
     req = findRequests(rm, 1);
     relaxRequests(req);
-    LOG(1, "End -- heavy edges");
 
     // Recycle buckets
     recycleBucks();
@@ -172,9 +173,9 @@ void deltaStepping::preprocessing()
 // maintain the minimum bucket at the front of the bucks container.
 buckT* deltaStepping::getMinBuck()
 {
-  for (auto buck : bucks) {
-    if (!buck.empty()) {
-      return &bucks.front();
+  for (unsigned i = 0; i < bucks.size(); ++i) {
+    if (!bucks.at(i).empty()) {
+      return &bucks.at(i);
     }
   }
   return nullptr;
@@ -242,19 +243,20 @@ reqT deltaStepping::findRequestsAux(const buckT& curBuck,
 {
   LOG(ALG_DELTASTEPPING_DEBUG, "Start -- findRequestsAux");
   reqT req;
-  for (auto nid : curBuck) {
-    auto* edges = diGraph->at(nid)->getOutEdges();
+  for (auto srcNodeId : curBuck) {
+    auto* edges = diGraph->at(srcNodeId)->getOutEdges();
     if (edges != nullptr) {
       for (unsigned i = 0; i < edges->size(); ++i) {
-        weightT edgeWeight = edges->at(i).second;
-        if (f(edgeWeight)) {
-          req.push_back(std::make_pair(i, dists.at(i) + edgeWeight));
-        }
+	nodeIdT& destNodeId = edges->at(i).first;
+	weightT& edgeWeight = edges->at(i).second;
+	if (f(edgeWeight)) {
+	  req.push_back(std::make_pair(destNodeId,
+				       dists.at(srcNodeId) + edgeWeight));
+	}
       }
     }
   }
   return req;
-  LOG(ALG_DELTASTEPPING_DEBUG, "End -- findRequestsAux");
 }
 
 // TODO: to optimize this function, find both light and heavy requests at once,
@@ -277,14 +279,16 @@ reqT deltaStepping::findRequestsAux(const boost::dynamic_bitset<>& curBuck,
                                     bool (*f)(weightT))
 {
   reqT req;
-  for (unsigned nid = 0; nid < curBuck.size(); ++nid) {
-    if (curBuck[nid]) {
-      auto* edges = diGraph->at(nid)->getOutEdges();
+  for (unsigned srcNodeId = 0; srcNodeId < curBuck.size(); ++srcNodeId) {
+    if (curBuck[srcNodeId]) {
+      auto* edges = diGraph->at(srcNodeId)->getOutEdges();
       if (edges != nullptr) {
         for (unsigned i = 0; i < edges->size(); ++i) {
-          weightT edgeWeight = edges->at(i).second;
+	  nodeIdT& destNodeId = edges->at(i).first;
+          weightT& edgeWeight = edges->at(i).second;
           if (f(edgeWeight)) {
-            req.push_back(std::make_pair(i, dists.at(i) + edgeWeight));
+            req.push_back(std::make_pair(destNodeId,
+					 dists.at(srcNodeId) + edgeWeight));
           }
         }
       }
@@ -319,7 +323,11 @@ void deltaStepping::bitsetListUnion(boost::dynamic_bitset<>& bs,
 
 void deltaStepping::recycleBucks()
 {
-  
+  unsigned i = 0;
+  while (bucks.at(i).empty() && i < bucks.size()) {
+    ++i;
+  }
+  bucks.setBeggining(i + bucks.getBeggining());
 }
 
 //===----------------------------------------------------------===//

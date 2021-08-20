@@ -12,6 +12,7 @@
 #ifndef DELTA_STEPPING_H
 #define DELTA_STEPPING_H
 
+#include "DS/circVec.hpp"
 #include "DS/digraph.hpp"
 #include "Utils/defs.hpp"
 
@@ -29,7 +30,7 @@ typedef weightT distT; // Distance type
 typedef std::vector<distT> distsT;
 typedef std::list<nodeIdT> buckT;
 // TODO: maybe change this from vector to something else.
-typedef std::vector<buckT> bucksT;
+typedef DS::circVec<buckT> bucksT;
 typedef std::list<std::pair<unsigned, distT> > reqT;
 
 class deltaStepping {
@@ -98,7 +99,8 @@ private:
   static bool isLight(weightT w);
   static bool isHeavy(weightT w);
   void bitsetListUnion(boost::dynamic_bitset<>&, const buckT&);
-
+  void recycleBucks();
+  
   //===--------------------------------------------------------===//
   // Debugging procedures
   //===--------------------------------------------------------===//
