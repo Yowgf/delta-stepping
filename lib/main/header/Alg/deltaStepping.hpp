@@ -70,6 +70,9 @@ private:
   boost::dynamic_bitset<> rm;
   std::list<std::pair<unsigned, distT> > req;
 
+  //===--------------------------------------------------------===//
+  // Procedures used by the algorithm
+  //===--------------------------------------------------------===//
   // These are all the versions of the algorithm, that can be
   // differentiated according to the ~mode~ argument given to the
   // constructor.
@@ -88,7 +91,6 @@ private:
   void initBucksDists();
   void initBucks();
   void initDists();
-  void relax(nodeIdT, distT);
   reqT findRequests(const buckT& curBuck, const unsigned mode);
   reqT findRequestsAux(const buckT& curBuck, bool (*f) (weightT w));
   reqT findRequests(const boost::dynamic_bitset<>& curBuck, 
@@ -96,6 +98,7 @@ private:
   reqT findRequestsAux(const boost::dynamic_bitset<>& curBuck, 
                        bool (*f) (weightT w));
   void relaxRequests(reqT&);
+  void relax(nodeIdT, distT);
   static bool isLight(weightT w);
   static bool isHeavy(weightT w);
   void bitsetListUnion(boost::dynamic_bitset<>&, const buckT&);

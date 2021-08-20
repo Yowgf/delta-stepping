@@ -66,6 +66,10 @@ deltaStepping::deltaStepping(digraph* inGraph, const char* mode,
     parallelBucketFusion();
   else
     invalidMode(mode);
+
+  if (ALG_DELTASTEPPING_DEBUG) {
+    printDists(dists);
+  }
 }
 
 deltaStepping::~deltaStepping()
@@ -73,7 +77,6 @@ deltaStepping::~deltaStepping()
   // Close output file
   outFile.close();
 
-  // Deallocate buckets
 }
 
 
@@ -163,6 +166,69 @@ void deltaStepping::sequential()
   LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::sequential");
 }
 
+//===----------------------------------------------------------===//
+// Parallel algorithm
+//===----------------------------------------------------------===//
+void deltaStepping::parallel()
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallel");
+  
+  preprocessing();
+
+  buckT* minBuck = nullptr;
+  while (minBuck = getMinBuck()) {
+
+    req.clear();
+    
+#   pragma omp parallel for num_threads(1)
+    for (unsigned buckIdx = 0; buckIdx < minBuck->size(); ++buckIdx) {
+      nodeIdT srcNodeId;
+#     pragma omp critical
+      srcNodeId = minBuck->front();
+#     pragma omp critical
+      minBuck->pop_front();
+
+      auto srcNode = diGraph->at(srcNodeId);
+      auto* edges = srcNode->getOutEdges();
+      if (edges != nullptr) {
+	for (unsigned edgeIdx = 0; edgeIdx < edges->size(); ++edgeIdx) {
+	  nodeIdT& destNodeId = edges->at(edgeIdx).first;
+	  weightT& edgeWeight = edges->at(edgeIdx).second;
+
+	  distT newDist = dists.at(srcNodeId) + edgeWeight;
+	  if (newDist < dists.at(destNodeId)) {
+#           pragma omp critical
+	    {
+	      if (dists.at(destNodeId) != infDist) {
+		bucks.at(dists.at(destNodeId) / delta).remove(destNodeId);
+	      }
+	      bucks.at(newDist / delta).push_back(destNodeId);
+	      dists.at(destNodeId) = newDist;
+	    }
+	  }
+	}
+      }
+    }
+  }
+  
+  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallel");
+}
+
+
+//===----------------------------------------------------------===//
+// Parallel algorithm with bucket fusion
+//===----------------------------------------------------------===//
+void deltaStepping::parallelBucketFusion()
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallelBucketFusion");
+  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallelBucketFusion");
+}
+
+
+//===----------------------------------------------------------===//
+// Auxiliary procedures
+//===----------------------------------------------------------===//
+
 void deltaStepping::preprocessing()
 {
   // Allocate buckets and distances
@@ -204,23 +270,6 @@ void deltaStepping::initDists()
   // Initialize the distances to infinity, except for sourceNode
   dists.resize(diGraph->size(), infDist);
   relax(sourceNode, 0);
-}
-
-void deltaStepping::relax(nodeIdT nid, distT newDist)
-{
-  LOG(ALG_DELTASTEPPING_DEBUG, "relaxing node %u with tentative distance %u",
-      nid, newDist);
-  if (dists.at(nid) != infDist) {
-    if (newDist < dists.at(nid)) {
-      bucks.at(dists.at(nid) / delta).remove(nid);
-      bucks.at(newDist / delta).push_back(nid);
-      dists.at(nid) = newDist;
-    }
-  }
-  else {
-    bucks.at(newDist / delta).push_back(nid);    
-    dists.at(nid) = newDist;
-  }
 }
 
 // TODO: to optimize this function, find both light and heavy requests at once,
@@ -303,6 +352,23 @@ void deltaStepping::relaxRequests(reqT& reqs)
     relax(req.first, req.second);
 }
 
+void deltaStepping::relax(nodeIdT nid, distT newDist)
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "relaxing node %u with tentative distance %u",
+      nid, newDist);
+  if (dists.at(nid) != infDist) {
+    if (newDist < dists.at(nid)) {
+      bucks.at(dists.at(nid) / delta).remove(nid);
+      bucks.at(newDist / delta).push_back(nid);
+      dists.at(nid) = newDist;
+    }
+  }
+  else {
+    bucks.at(newDist / delta).push_back(nid);    
+    dists.at(nid) = newDist;
+  }
+}
+
 bool deltaStepping::isLight(weightT w)
 {
   return w <= delta;
@@ -328,25 +394,6 @@ void deltaStepping::recycleBucks()
     ++i;
   }
   bucks.setBeggining(i + bucks.getBeggining());
-}
-
-//===----------------------------------------------------------===//
-// Parallel algorithm
-//===----------------------------------------------------------===//
-void deltaStepping::parallel()
-{
-  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallel");
-  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallel");
-}
-
-
-//===----------------------------------------------------------===//
-// Parallel algorithm with bucket fusion
-//===----------------------------------------------------------===//
-void deltaStepping::parallelBucketFusion()
-{
-  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallelBucketFusion");
-  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallelBucketFusion");
 }
 
 //===----------------------------------------------------------===//
