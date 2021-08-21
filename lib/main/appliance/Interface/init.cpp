@@ -14,11 +14,10 @@
 #include "Utils/str.hpp"
 
 #include <string>
+#include <iomanip>
 #include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <sstream>
-#include <tuple>
 #include <vector>
 
 #include "boost/dynamic_bitset.hpp"
@@ -46,12 +45,17 @@ init::init(int argc, char** argv)
   processEntries(argc, argv);
 
 # if INTERFACE_INIT_PRINT_GRAPH == 1
-  printGraph();
+  printInGraph();
 # endif
   
   try {
-    Alg::deltaStepping{inGraph, inMode.c_str(), outFileName.c_str(),
-			 static_cast<unsigned>(numThreads)};
+    TIME_EXECUTION(clkVar,
+		   Alg::deltaStepping(inGraph, inMode.c_str(),
+				      outFileName.c_str(),
+				      static_cast<unsigned>(numThreads))
+		   );
+
+    printOut();
   }
   catch(std::exception&) {
     destroy();
@@ -252,7 +256,7 @@ void init::ignoreComments() noexcept(false)
 
 // For every node in the graph, print its number of outgoing
 // edges, and each one of the destination nodes for these edges.
-void init::printGraph() noexcept(false)
+void init::printInGraph() noexcept(false)
 {
   register unsigned i = 0;
   register unsigned j = 0;
@@ -274,5 +278,17 @@ void init::printGraph() noexcept(false)
   std::cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";  
 }
 
+void init::printOut() const noexcept
+{
+#if INTERFACE_INIT_PRINT_TIME
+  printOutTime();
+#endif
+}
+
+void init::printOutTime() const noexcept
+{
+  double globalClkCount = clkVar.count();
+  cout << setprecision(6) << std::fixed << globalClkCount << '\n';
+}
 
 }

@@ -7,6 +7,7 @@
 
 #include "Alg/deltaStepping.hpp"
 #include "Utils/str.hpp"
+#include "Utils/num.hpp"
 
 #include <cmath>
 #include <stdexcept>
@@ -183,7 +184,8 @@ void deltaStepping::parallel()
 
     req.clear();
     
-#   pragma omp parallel for num_threads(numThreads)
+#   pragma omp parallel for \
+  num_threads(num<unsigned>::min(numThreads, minBuck->size()))
     for (unsigned buckIdx = 0; buckIdx < minBuck->size(); ++buckIdx) {
       nodeIdT srcNodeId;
 #     pragma omp critical

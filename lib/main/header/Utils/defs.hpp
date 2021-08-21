@@ -14,12 +14,13 @@ typedef unsigned nodeIdT;
 typedef unsigned weightT;
 
 // Put here any debugging control macros
-#define ALG_DELTASTEPPING_DEBUG 1
+#define ALG_DELTASTEPPING_DEBUG 0
 
 #define DS_DIGRAPH_DEBUG 0
 
 #define INTERFACE_INIT_DEBUG 0
 #define INTERFACE_INIT_PRINT_GRAPH 0
+#define INTERFACE_INIT_PRINT_TIME 1
 
 
 #endif // #ifndef DEFS_H

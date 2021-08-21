@@ -14,6 +14,7 @@
 
 #include "DS/digraph.hpp"
 #include "Utils/defs.hpp"
+#include "Utils/time.hpp"
 
 #include <fstream>
 
@@ -51,6 +52,9 @@ private:
   // The graph is built in this class.
   digraph* inGraph;
 
+  // Algorithm timing variable
+  std::chrono::duration<double> clkVar;
+  
   // Integrity assurance. These functions pertain to making sure
   //   the program is safe to run.
   void destroy();
@@ -70,7 +74,9 @@ private:
   void ignoreComments() noexcept(false);
   // This functions prints the graph. It is used just for debug
   // output.
-  void printGraph() noexcept(false);
+  void printInGraph() noexcept(false);
+  void printOut() const noexcept;
+  void printOutTime() const noexcept;
   
 };
 
