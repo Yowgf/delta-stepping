@@ -42,12 +42,13 @@ public:
   // to the given mode. It writes the results on the file whose name
   // is provided in the argument ~outFileName~.
   deltaStepping(digraph* inGraph, const char* mode, 
-                const char* outFileName);
+                const char* outFileName, const unsigned numThreads);
   ~deltaStepping();
 
 private:
   digraph* diGraph;
   std::ofstream outFile;
+  const unsigned numThreads;
   
   void initInternalVars(digraph* inGraph, const char* mode,
                 const char* outFileName);

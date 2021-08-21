@@ -17,10 +17,13 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <sstream>
 #include <tuple>
 #include <vector>
 
 #include "boost/dynamic_bitset.hpp"
+
+#define INRANGE(n, a, b) (a <= n && n <= b)
 
 using digraph = DS::digraph<nodeIdT>;
 
@@ -29,13 +32,14 @@ using namespace std;
 
 namespace Interface {
   
-init::init(int argc, char** argv) : inFileHasHeader(false), inGraph(nullptr)
+init::init(int argc, char** argv)
+  : inFileHasHeader(false), inGraph(nullptr), numThreads(1)
 {
-  const bool isResultValid = validateArguments(argc, argv);
-  if (!isResultValid) {
+  const bool isProgArgsValid = validateArguments(argc, argv);
+  if (!isProgArgsValid) {
     throw std::invalid_argument {"Invalid program arguments"\
                                    "\nUsage: <program> <in-file>"\
-                                   " <mode>"};
+                                   " <mode> [<num-threads>]"};
   }
 
   // This loads inGraph
@@ -46,8 +50,8 @@ init::init(int argc, char** argv) : inFileHasHeader(false), inGraph(nullptr)
 # endif
   
   try {
-    Alg::deltaStepping{inGraph, inMode.c_str(), 
-                         outFileName.c_str()};
+    Alg::deltaStepping{inGraph, inMode.c_str(), outFileName.c_str(),
+			 static_cast<unsigned>(numThreads)};
   }
   catch(std::exception&) {
     destroy();
@@ -70,7 +74,7 @@ void init::destroy()
 // Check if the mode string given has proper size.
 bool init::validateArguments(int argc, char** argv) const noexcept
 {
-  if (argc != knumProgArgs) {
+  if (!INRANGE(argc, kminProgArgs, kmaxProgArgs)) {
     return false;
   }
 
@@ -86,6 +90,15 @@ bool init::validateArguments(int argc, char** argv) const noexcept
   if (char_traits<char>::length(argv[2]) > kmaxModeLen) {
     return false;
   }
+
+  if (argc == knumProgArgsWithThreads) {
+    int numThreadsIn = 0;
+    std::stringstream ss(argv[knumProgArgsWithThreads - 1]);
+    ss >> numThreadsIn;
+    if (!INRANGE(numThreadsIn, kminNumThreads, kmaxNumThreads)) {
+      return false;
+    }
+  }
   
   return true;
 }
@@ -96,6 +109,10 @@ bool init::validateArguments(int argc, char** argv) const noexcept
 // ...
 void init::processEntries(int argc, char** argv) noexcept(false)
 {
+  if (argc == knumProgArgsWithThreads) {
+    std::stringstream ss(argv[knumProgArgsWithThreads - 1]);
+    ss >> numThreads;
+  }
   // Read file name, mode, and then open the file and start reading
   // it.
   openInFile(argv[1], argv[2]);

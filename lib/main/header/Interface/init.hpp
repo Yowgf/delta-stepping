@@ -27,16 +27,22 @@ public:
   ~init();
 
 private:
-  static constexpr int knumProgArgs = 3;
+  static constexpr int kminProgArgs = 3;
+  static constexpr int kmaxProgArgs = 4;
+  static constexpr int knumProgArgsWithThreads = 4;
   static constexpr unsigned kmaxFileNameLen = 0x100;
   static constexpr unsigned kmaxModeLen = 0x100;
-
+  static constexpr int kminNumThreads = 1;
+  static constexpr int kmaxNumThreads = 0x100;
+  
+  // Constants for reading graph
   static constexpr unsigned kmaxNodeId = 0xFFFFFFF;
   static constexpr int kmaxWeight = 0xFFFFFFF;
 
   std::string inFileName;
   bool inFileHasHeader;
   std::string inMode;
+  unsigned numThreads;
 
   // Built with inFileName
   std::string outFileName;

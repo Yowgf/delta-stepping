@@ -49,9 +49,9 @@ using digraph = DS::digraph<nodeIdT>;
 // - How to aggregate the tasks?
 // - How to map the aggregated tasks to threads?
 deltaStepping::deltaStepping(digraph* inGraph, const char* mode, 
-                const char* outFileName)
+			     const char* outFileName, const unsigned numThreads)
   : sourceNode(0), // TODO: find more sofisticated way to decide on this
-    rm(inGraph->getNumNodes())
+    rm(inGraph->getNumNodes()), numThreads(numThreads)
 {
   // Intialize internal variables
   initInternalVars(inGraph, mode, outFileName);
@@ -76,7 +76,6 @@ deltaStepping::~deltaStepping()
 {
   // Close output file
   outFile.close();
-
 }
 
 
@@ -87,6 +86,10 @@ deltaStepping::~deltaStepping()
 void deltaStepping::initInternalVars(digraph* inGraph, const char* mode, 
                 const char* outFileName)
 {
+  if (numThreads < 1) {
+    throw std::logic_error{string("Invalid number of threads '") +
+			     to_string(numThreads) + "'"};
+  }
   assignGraph(inGraph);
   openOutFile(outFileName);
 }
@@ -180,7 +183,7 @@ void deltaStepping::parallel()
 
     req.clear();
     
-#   pragma omp parallel for num_threads(1)
+#   pragma omp parallel for num_threads(numThreads)
     for (unsigned buckIdx = 0; buckIdx < minBuck->size(); ++buckIdx) {
       nodeIdT srcNodeId;
 #     pragma omp critical
