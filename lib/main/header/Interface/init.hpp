@@ -12,6 +12,7 @@
 #ifndef INIT_H
 #define INIT_H
 
+#include "Alg/deltaStepping.hpp"
 #include "DS/digraph.hpp"
 #include "Utils/defs.hpp"
 #include "Utils/time.hpp"
@@ -45,8 +46,7 @@ private:
   std::string inMode;
   unsigned numThreads;
 
-  // Built with inFileName
-  std::string outFileName;
+  std::string outFileName; // Built with inFileName
   std::ifstream inFile;
 
   // The graph is built in this class.
@@ -72,10 +72,15 @@ private:
   void readEdges() noexcept(false);
   // Ignores comments that can come in the beggining of a file.
   void ignoreComments() noexcept(false);
+  
   // This functions prints the graph. It is used just for debug
   // output.
   void printInGraph() noexcept(false);
+
+  // Writes the output distances relation to the outputFile
+  void writeOut(Alg::deltaStepping&);
   void printOut() const noexcept;
+  void printOutDists() const;
   void printOutTime() const noexcept;
   
 };

@@ -20,6 +20,7 @@ typedef unsigned weightT;
 
 #define INTERFACE_INIT_DEBUG 0
 #define INTERFACE_INIT_PRINT_GRAPH 0
+#define INTERFACE_INIT_PRINT_DISTS 1
 #define INTERFACE_INIT_PRINT_TIME 1
 
 

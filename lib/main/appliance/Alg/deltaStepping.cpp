@@ -9,6 +9,10 @@
 #include "Utils/str.hpp"
 #include "Utils/num.hpp"
 
+#ifdef _OPENMP
+#include "omp.h"
+#endif
+
 #include <cmath>
 #include <stdexcept>
 
@@ -19,7 +23,28 @@ namespace Alg {
 
 using digraph = DS::digraph<nodeIdT>;
 
+deltaStepping::deltaStepping()
+  : sourceNode(0) // TODO: find more sofisticated way to decide on this
+{}
 
+void deltaStepping::printOutToFile(const char* outFileName)
+{
+  outFile.open(outFileName, ios_base::out | ios_base::trunc);
+  printOutToStream(outFile);
+  outFile.close();
+}
+
+void deltaStepping::printOutToStream(std::ostream& os)
+{
+  for (unsigned i = 0; i < dists.size(); ++i) {
+    os << sourceNode << ' ' << dists.at(i) << '\n';
+  }  
+}
+  
+deltaStepping::~deltaStepping()
+{}
+
+  
 // Software engineering strategy:
 //
 // - Implement delta-stepping as described in the original
@@ -49,13 +74,11 @@ using digraph = DS::digraph<nodeIdT>;
 // - Which tasks can we identify in this algorithm?
 // - How to aggregate the tasks?
 // - How to map the aggregated tasks to threads?
-deltaStepping::deltaStepping(digraph* inGraph, const char* mode, 
-			     const char* outFileName, const unsigned numThreads)
-  : sourceNode(0), // TODO: find more sofisticated way to decide on this
-    rm(inGraph->getNumNodes()), numThreads(numThreads)
+void deltaStepping::run(digraph* inGraph, const char* mode, 
+			const unsigned numThreads)
 {
   // Intialize internal variables
-  initInternalVars(inGraph, mode, outFileName);
+  initInternalVars(inGraph, mode, numThreads);
 
   // TODO: is there anything that should be done under every mode?
   const string modeStr{mode};
@@ -67,32 +90,23 @@ deltaStepping::deltaStepping(digraph* inGraph, const char* mode,
     parallelBucketFusion();
   else
     invalidMode(mode);
-
-  if (ALG_DELTASTEPPING_DEBUG) {
-    printDists(dists);
-  }
 }
-
-deltaStepping::~deltaStepping()
-{
-  // Close output file
-  outFile.close();
-}
-
 
 //===----------------------------------------------------------===//
 // Aux functions for the constructor.
 //===----------------------------------------------------------===//
 
-void deltaStepping::initInternalVars(digraph* inGraph, const char* mode, 
-                const char* outFileName)
+void deltaStepping::initInternalVars(digraph* inGraph, const char* mode,
+				     const unsigned numThreads)
 {
   if (numThreads < 1) {
     throw std::logic_error{string("Invalid number of threads '") +
 			     to_string(numThreads) + "'"};
   }
+  this->numThreads = numThreads;
+  rm.resize(inGraph->getNumNodes());
+  tlBucks.assign(numThreads, maxUns);
   assignGraph(inGraph);
-  openOutFile(outFileName);
 }
 
 void deltaStepping::assignGraph(digraph* inGraph) {
@@ -100,11 +114,6 @@ void deltaStepping::assignGraph(digraph* inGraph) {
     throw invalid_argument{"(assignGraph) nullptr inGraph argument"};
   }
   diGraph = inGraph;
-}
-
-void deltaStepping::openOutFile(const char* outFileName)
-{
-  outFile.open(outFileName, ios_base::out | ios_base::trunc);
 }
 
 void deltaStepping::invalidMode(const char* mode)
@@ -175,7 +184,60 @@ void deltaStepping::sequential()
 //===----------------------------------------------------------===//
 void deltaStepping::parallel()
 {
-  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallel");
+  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltastepping::parallel");
+
+  preprocessingPrl();
+
+  unsigned numActiveThreads = getMinBuckPrl(tlBucks);
+  while (numActiveThreads != 0) {
+    LOG(ALG_DELTASTEPPING_DEBUG, "Outer Loop!");
+
+#   pragma omp parallel num_threads(numActiveThreads)
+    {
+      unsigned myRank = omp_get_thread_num();
+      unsigned myBuckIdx = tlBucks.at(myRank);
+
+
+      if (myBuckIdx != maxUns) {
+	buckT* myBuck = &bucks.at(myBuckIdx);
+	nodeIdT srcNodeId;
+	srcNodeId = myBuck->front();
+
+#       pragma omp critical
+	myBuck->pop_front();
+
+	auto srcNode = diGraph->at(srcNodeId);
+	auto* edges = srcNode->getOutEdges();
+	if (edges != nullptr) {
+	  for (unsigned edgeIdx = 0; edgeIdx < edges->size(); ++edgeIdx) {
+	    LOG(ALG_DELTASTEPPING_DEBUG, "Inner Loop. EdgeIdx: %u", edgeIdx);
+	  
+	    nodeIdT& destNodeId = edges->at(edgeIdx).first;
+	    weightT& edgeWeight = edges->at(edgeIdx).second;
+	    // FIXME: use atomic pragmas instead of wrapping everything in critical
+#           pragma omp critical(parallelCriticalUpdateDists)
+	    {
+	      distT newDist = dists.at(srcNodeId) + edgeWeight;
+	      if (newDist < dists.at(destNodeId)) {
+	        bucks.at(newDist / delta).push_back(destNodeId);
+	        dists.at(destNodeId) = newDist;
+	      }
+	    }
+	  }
+	}
+      }
+    }
+    
+    numActiveThreads = getMinBuckPrl(tlBucks);
+  }
+  
+  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltastepping::parallel");
+}
+
+  
+void deltaStepping::parallelListDeprecated()
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallelListDeprecated");
   
   preprocessing();
 
@@ -184,11 +246,10 @@ void deltaStepping::parallel()
 
     req.clear();
     
-#   pragma omp parallel for \
+#   pragma omp parallel for					\
   num_threads(num<unsigned>::min(numThreads, minBuck->size()))
     for (unsigned buckIdx = 0; buckIdx < minBuck->size(); ++buckIdx) {
       nodeIdT srcNodeId;
-#     pragma omp critical
       srcNodeId = minBuck->front();
 #     pragma omp critical
       minBuck->pop_front();
@@ -216,7 +277,7 @@ void deltaStepping::parallel()
     }
   }
   
-  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallel");
+  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallelListDeprecated");
 }
 
 
@@ -234,14 +295,35 @@ void deltaStepping::parallelBucketFusion()
 // Auxiliary procedures
 //===----------------------------------------------------------===//
 
+void deltaStepping::preprocessingPrl()
+{
+  preprocessing();
+}
+  
 void deltaStepping::preprocessing()
 {
   // Allocate buckets and distances
   initBucksDists();
 }
 
-// FIXME: for this to work, we need support from other procedures, to always
-// maintain the minimum bucket at the front of the bucks container.
+unsigned deltaStepping::getMinBuckPrl(tlBucksT& tlBucks) {
+  unsigned bIdx = 0;
+  unsigned tlbIdx = 0;
+  for (bIdx = 0; bIdx < bucks.size() && tlbIdx < tlBucks.size(); ++bIdx) {
+    if (!bucks.at(bIdx).empty()) {
+      tlBucks.at(tlbIdx++) = bIdx;
+    }
+  }
+  unsigned numActiveThreads = tlbIdx;
+  LOGATT(ALG_DELTASTEPPING_DEBUG, numActiveThreads);
+  // Replace the old buckets with a special value, if didnt find new ones.
+  while (tlbIdx < tlBucks.size()) {
+    tlBucks.at(tlbIdx++) = maxUns;
+  }
+  return numActiveThreads;
+}
+  
+
 buckT* deltaStepping::getMinBuck()
 {
   for (unsigned i = 0; i < bucks.size(); ++i) {
@@ -401,6 +483,12 @@ void deltaStepping::recycleBucks()
   bucks.setBeggining(i + bucks.getBeggining());
 }
 
+// FIXME: deprecated
+bool deltaStepping::isEmpty(tlBucksT& tlBucks)
+{
+  return tlBucks.front() == maxUns;
+}
+
 //===----------------------------------------------------------===//
 // Debugging procedures
 //===----------------------------------------------------------===//
@@ -410,6 +498,16 @@ void deltaStepping::printBuck(buckT& buck)
   std::cerr << "Printing bucket\n";
   for (auto nid : buck) {
     std::cerr << nid << ' ';
+  }
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+}
+
+void deltaStepping::printTlBucks(tlBucksT& tlBucks)
+{
+  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+  std::cerr << "Printing tlBucks\n";
+  for (auto buckId : tlBucks) {
+    std::cerr << buckId << ' ';
   }
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
@@ -449,3 +547,4 @@ void deltaStepping::printDists(distsT& dists)
 }
 
 }
+

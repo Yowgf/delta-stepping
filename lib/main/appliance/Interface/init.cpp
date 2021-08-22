@@ -5,7 +5,6 @@
 // more detail.
 //===----------------------------------------------------------===//
 
-#include "Alg/deltaStepping.hpp"
 #include "DS/wEdge.hpp"
 #include "Interface/init.hpp"
 #include "Utils/error.hpp"
@@ -49,12 +48,13 @@ init::init(int argc, char** argv)
 # endif
   
   try {
+    Alg::deltaStepping dsRun;
     TIME_EXECUTION(clkVar,
-		   Alg::deltaStepping(inGraph, inMode.c_str(),
-				      outFileName.c_str(),
-				      static_cast<unsigned>(numThreads))
+		   dsRun.run(inGraph, inMode.c_str(),
+			     static_cast<unsigned>(numThreads))
 		   );
 
+    writeOut(dsRun);
     printOut();
   }
   catch(std::exception&) {
@@ -278,11 +278,36 @@ void init::printInGraph() noexcept(false)
   std::cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";  
 }
 
+void init::writeOut(Alg::deltaStepping& dsRun)
+{
+  dsRun.printOutToFile(outFileName.c_str());
+}
+
 void init::printOut() const noexcept
 {
+#if INTERRFACE_INIT_PRINT_DISTS
+  printOutDists();
+#endif
 #if INTERFACE_INIT_PRINT_TIME
   printOutTime();
 #endif
+}
+
+void init::printOutDists() const
+{
+  std::ifstream ifs(outFileName, std::ios_base::in);
+
+  const unsigned bufSz = 0xFFFF;
+  while (ifs.good()) {
+    char buffer[bufSz];
+    ifs.readsome(buffer, bufSz - 1);
+    buffer[ifs.gcount()] = '\0';
+    std::cout << buffer;
+  }
+
+  if (!ifs.eof()) {
+    throw std::logic_error{"(printOutDists) Error while printing distances."};
+  }
 }
 
 void init::printOutTime() const noexcept
