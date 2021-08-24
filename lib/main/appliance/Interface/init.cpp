@@ -55,7 +55,7 @@ init::init(int argc, char** argv)
 		   );
 
     writeOut(dsRun);
-    printOut();
+    printOut(dsRun);
   }
   catch(std::exception&) {
     destroy();
@@ -283,31 +283,32 @@ void init::writeOut(Alg::deltaStepping& dsRun)
   dsRun.printOutToFile(outFileName.c_str());
 }
 
-void init::printOut() const noexcept
+void init::printOut(Alg::deltaStepping& dsRun) const
 {
-#if INTERRFACE_INIT_PRINT_DISTS
-  printOutDists();
+#if INTERFACE_INIT_PRINT_DISTS
+  printOutDists(dsRun);
 #endif
 #if INTERFACE_INIT_PRINT_TIME
   printOutTime();
 #endif
 }
 
-void init::printOutDists() const
+void init::printOutDists(Alg::deltaStepping& dsRun) const
 {
-  std::ifstream ifs(outFileName, std::ios_base::in);
+  // std::ifstream ifs(outFileName, std::ios_base::in);
 
-  const unsigned bufSz = 0xFFFF;
-  while (ifs.good()) {
-    char buffer[bufSz];
-    ifs.readsome(buffer, bufSz - 1);
-    buffer[ifs.gcount()] = '\0';
-    std::cout << buffer;
-  }
+  // const unsigned bufSz = 0xFFFF;
+  // while (ifs.good()) {
+  //   char buffer[bufSz];
+  //   ifs.read(buffer, bufSz - 1);
+  //   buffer[ifs.gcount()] = '\0';
+  //   std::cout << buffer;
+  // }
 
-  if (!ifs.eof()) {
-    throw std::logic_error{"(printOutDists) Error while printing distances."};
-  }
+  // if (!ifs.eof()) {
+  //   throw std::logic_error{"(printOutDists) Error while printing distances."};
+  // }
+  dsRun.printOutToStream(std::cout);
 }
 
 void init::printOutTime() const noexcept

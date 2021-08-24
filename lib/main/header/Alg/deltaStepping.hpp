@@ -28,11 +28,13 @@ namespace Alg {
 
 typedef weightT distT; // Distance type
 typedef std::vector<distT> distsT;
-typedef std::list<nodeIdT> buckT;
-// TODO: maybe change this from vector to something else.
+typedef std::vector<nodeIdT> buckT;
 typedef DS::circVec<buckT> bucksT;
-typedef std::vector<unsigned> tlBucksT;
 typedef std::list<std::pair<unsigned, distT> > reqT;
+
+// Separated declarations for parallel implementation.
+typedef std::vector<nodeIdT> lBuckT; // Local
+typedef std::vector<lBuckT> lBucksT; // Local
 
 class deltaStepping {
   using digraph = DS::digraph<nodeIdT>;
@@ -46,9 +48,10 @@ public:
   ~deltaStepping();
 
   void run(digraph* inGraph, const char* mode, const unsigned numThreads);
-  distsT& getDists() { return dists; }
+  distsT& getDists();
   void printOutToFile(const char* outFileName);
   void printOutToStream(std::ostream& os);
+  
 private:
   digraph* diGraph;
   std::ofstream outFile;
@@ -64,7 +67,6 @@ private:
   //===--------------------------------------------------------===//
   distsT dists;
   bucksT bucks;
-  tlBucksT tlBucks;
 
   static constexpr float delta = 100; // TODO: make this a user argument.
   const nodeIdT sourceNode;
@@ -79,17 +81,18 @@ private:
   //===--------------------------------------------------------===//
   // Procedures used by the algorithm
   //===--------------------------------------------------------===//
+  // Ground truth version
+  void dijkstra();
   // These are all the versions of the algorithm, that can be
   // differentiated according to the ~mode~ argument given to the
   // constructor.
   void sequential();
   void parallel();
-  void parallelListDeprecated();
   void parallelBucketFusion();
 
   void preprocessingPrl();
   void preprocessing();
-  unsigned getMinBuckPrl(tlBucksT& tlBucks);
+  unsigned getMinBuckIdx();
   buckT* getMinBuck();
   // FIXME: we are currently getting some graph attributes, such as edge weight,
   // from outside the algorithm. This might not be possible in some
@@ -108,22 +111,23 @@ private:
   reqT findRequestsAux(const boost::dynamic_bitset<>& curBuck, 
                        bool (*f) (weightT w));
   void relaxRequests(reqT&);
+  // Relaxes the outgoing edges of srcNode
+  void relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks);
   void relax(nodeIdT, distT);
   static bool isLight(weightT w);
   static bool isHeavy(weightT w);
   void bitsetListUnion(boost::dynamic_bitset<>&, const buckT&);
   void recycleBucks();
-  // FIXME: Deprecated
-  bool isEmpty(tlBucksT&);
   
   //===--------------------------------------------------------===//
   // Debugging procedures
   //===--------------------------------------------------------===//
   void printBuck(buckT&);
-  void printTlBucks(tlBucksT&);
   void printReq(reqT& req);
   void printBs(boost::dynamic_bitset<>& bs);
   void printDists(distsT& dists);
+  void assertEqualRes(void (deltaStepping::* alg1)(),
+		      void (deltaStepping::* alg2)());
 };
 
 }

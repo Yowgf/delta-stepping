@@ -79,8 +79,8 @@ private:
 
   // Writes the output distances relation to the outputFile
   void writeOut(Alg::deltaStepping&);
-  void printOut() const noexcept;
-  void printOutDists() const;
+  void printOut(Alg::deltaStepping& dsRun) const;
+  void printOutDists(Alg::deltaStepping& dsRun) const;
   void printOutTime() const noexcept;
   
 };

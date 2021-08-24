@@ -13,7 +13,10 @@
 #include "omp.h"
 #endif
 
+#include <cassert>
 #include <cmath>
+#include <functional>
+#include <queue>
 #include <stdexcept>
 
 using namespace std;
@@ -27,8 +30,17 @@ deltaStepping::deltaStepping()
   : sourceNode(0) // TODO: find more sofisticated way to decide on this
 {}
 
+
+distsT& deltaStepping::getDists()
+{
+  return dists;
+}    
+
 void deltaStepping::printOutToFile(const char* outFileName)
 {
+  if (outFile.is_open()) {
+    outFile.close();
+  }
   outFile.open(outFileName, ios_base::out | ios_base::trunc);
   printOutToStream(outFile);
   outFile.close();
@@ -37,7 +49,7 @@ void deltaStepping::printOutToFile(const char* outFileName)
 void deltaStepping::printOutToStream(std::ostream& os)
 {
   for (unsigned i = 0; i < dists.size(); ++i) {
-    os << sourceNode << ' ' << dists.at(i) << '\n';
+    os << i << ' ' << dists.at(i) << '\n';
   }  
 }
   
@@ -82,12 +94,14 @@ void deltaStepping::run(digraph* inGraph, const char* mode,
 
   // TODO: is there anything that should be done under every mode?
   const string modeStr{mode};
-  if (modeStr == "sequential") 
+  if (modeStr == "sequential")
     sequential();
   else if (modeStr == "parallel")
     parallel();
   else if (modeStr == "parallel-bucket-fusion")
     parallelBucketFusion();
+  else if (modeStr == "dijkstra")
+    dijkstra();
   else
     invalidMode(mode);
 }
@@ -104,8 +118,6 @@ void deltaStepping::initInternalVars(digraph* inGraph, const char* mode,
 			     to_string(numThreads) + "'"};
   }
   this->numThreads = numThreads;
-  rm.resize(inGraph->getNumNodes());
-  tlBucks.assign(numThreads, maxUns);
   assignGraph(inGraph);
 }
 
@@ -126,6 +138,44 @@ void deltaStepping::invalidMode(const char* mode)
 // Below is the implementation of the main algorithms
 //===----------------------------------------------------------===//
 
+typedef std::pair<nodeIdT, distT> dijkstraPair; 
+class ordDijkstra {
+public:
+  bool operator() (const dijkstraPair& a, const dijkstraPair& b) {
+    return a.second > b.second;
+  }
+};
+void deltaStepping::dijkstra()
+{
+  std::priority_queue<dijkstraPair, std::vector<dijkstraPair>,
+		      ordDijkstra> frontier;
+  std::vector<bool> isVisited(diGraph->getNumNodes(), false);
+  dists.resize(diGraph->getNumNodes(), infDist);
+  dists.at(sourceNode) = 0;
+  frontier.push(make_pair(sourceNode, dists.at(sourceNode)));
+  while (!frontier.empty()) {
+    nodeIdT srcNodeId = frontier.top().first;
+    frontier.pop();
+    isVisited.at(srcNodeId) = true;
+    auto* srcNode = diGraph->at(srcNodeId);
+    auto* edges = srcNode->getOutEdges();
+    if (edges != nullptr) {
+      for (unsigned i = 0; i < edges->size(); ++i) {
+	auto& edge = edges->at(i);
+	auto& destNodeId = edge.first;
+	auto& edgeWeight = edge.second;
+	distT& oldDist = dists.at(destNodeId);
+	distT newDist = dists.at(srcNodeId) + edgeWeight;
+	if (newDist < oldDist) {
+	  dists.at(destNodeId) = newDist;
+	  if (!isVisited.at(destNodeId)) {
+	    frontier.push(make_pair(destNodeId, dists.at(destNodeId)));
+	  }
+	}
+      }
+    }    
+  }
+}  
 
 //===----------------------------------------------------------===//
 // Sequential algorithm
@@ -133,52 +183,36 @@ void deltaStepping::invalidMode(const char* mode)
 void deltaStepping::sequential()
 {
   LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::sequential");
-
   preprocessing();
-
-  
   while (true) {
-
     buckT* minBuck = getMinBuck();
     if (minBuck == nullptr) // Means bucks is empty
       break;
-
     rm.reset();
-
     while (!minBuck->empty()) {
       if (ALG_DELTASTEPPING_DEBUG)
         printBuck(*minBuck);
-
       // Find requests for light edges
       req = findRequests(*minBuck, 0);
       if (ALG_DELTASTEPPING_DEBUG)
 	printReq(req);
-
       bitsetListUnion(rm, *minBuck);
       if (ALG_DELTASTEPPING_DEBUG)
 	printBs(rm);
-
       // Clear the bucket
       minBuck->clear();
-
       // Relax the light edges requests (may reintroduce some nodes)
       relaxRequests(req);
-      if (ALG_DELTASTEPPING_DEBUG)
-	printDists(dists);
     }
-
     // Process requests for heavy edges
     req = findRequests(rm, 1);
     relaxRequests(req);
-
     // Recycle buckets
     recycleBucks();
   }
-  
-
   LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::sequential");
 }
-
+  
 //===----------------------------------------------------------===//
 // Parallel algorithm
 //===----------------------------------------------------------===//
@@ -188,98 +222,78 @@ void deltaStepping::parallel()
 
   preprocessingPrl();
 
-  unsigned numActiveThreads = getMinBuckPrl(tlBucks);
-  while (numActiveThreads != 0) {
-    LOG(ALG_DELTASTEPPING_DEBUG, "Outer Loop!");
-
-#   pragma omp parallel num_threads(numActiveThreads)
-    {
-      unsigned myRank = omp_get_thread_num();
-      unsigned myBuckIdx = tlBucks.at(myRank);
-
-
-      if (myBuckIdx != maxUns) {
-	buckT* myBuck = &bucks.at(myBuckIdx);
-	nodeIdT srcNodeId;
-	srcNodeId = myBuck->front();
-
-#       pragma omp critical
-	myBuck->pop_front();
-
-	auto srcNode = diGraph->at(srcNodeId);
-	auto* edges = srcNode->getOutEdges();
-	if (edges != nullptr) {
-	  for (unsigned edgeIdx = 0; edgeIdx < edges->size(); ++edgeIdx) {
-	    LOG(ALG_DELTASTEPPING_DEBUG, "Inner Loop. EdgeIdx: %u", edgeIdx);
-	  
-	    nodeIdT& destNodeId = edges->at(edgeIdx).first;
-	    weightT& edgeWeight = edges->at(edgeIdx).second;
-	    // FIXME: use atomic pragmas instead of wrapping everything in critical
-#           pragma omp critical(parallelCriticalUpdateDists)
-	    {
-	      distT newDist = dists.at(srcNodeId) + edgeWeight;
-	      if (newDist < dists.at(destNodeId)) {
-	        bucks.at(newDist / delta).push_back(destNodeId);
-	        dists.at(destNodeId) = newDist;
-	      }
+  // Global vars
+  unsigned gMinBuckIdx = getMinBuckIdx();
+  buckT* gMinBuck = &bucks.at(gMinBuckIdx);
+  unsigned nextGMinBuckIdx = maxUns;
+  unsigned prevGBuckSz = 0;
+  unsigned gMinBuckStartIdx = 0;
+  
+  // It seems to be a good idea to not place the parallel directive inside the
+  // main loop, to avoid thread management overheads.
+  #pragma omp parallel num_threads(numThreads)
+  {
+    lBucksT lBucks; // Local buckets
+    while (gMinBuckIdx != maxUns) {
+      LOG(ALG_DELTASTEPPING_DEBUG, "Hello from thread %u", omp_get_thread_num());
+      #pragma omp single nowait
+      prevGBuckSz = gMinBuck->size();
+      #pragma omp for nowait schedule(dynamic, 64)
+      for (unsigned i = gMinBuckStartIdx; i < gMinBuck->size(); ++i) {
+	nodeIdT srcNode = gMinBuck->at(i);
+	relaxEdgesPrl(srcNode, lBucks);
+      }
+      LOG(ALG_DELTASTEPPING_DEBUG, "Hello2 from thread %u", omp_get_thread_num());
+      #pragma omp barrier
+      // Copy local buckets to global one
+      LOG(ALG_DELTASTEPPING_DEBUG, "Printing local buckets");
+      for (unsigned i = 0; i < lBucks.size(); ++i) {
+	if (!lBucks.at(i).empty()) {
+          #pragma omp critical
+	  {
+	    LOG(ALG_DELTASTEPPING_DEBUG, "gbuck before copy:");
+	    if (ALG_DELTASTEPPING_DEBUG) {
+	      printBuck(bucks.at(i));
+	    }
+	    lBuckT& lRefBuck = lBucks.at(i);
+	    buckT& gRefBuck = bucks.at(i);
+	    gRefBuck.insert(gRefBuck.end(), lRefBuck.begin(), lRefBuck.end());
+	    LOG(ALG_DELTASTEPPING_DEBUG, "gbuck after copy:");
+	    if (ALG_DELTASTEPPING_DEBUG) {
+	      printBuck(bucks.at(i));
 	    }
 	  }
 	}
       }
+      #pragma omp barrier
+
+      #pragma omp single nowait
+      {
+	unsigned updtGBuckSz = gMinBuck->size();
+	if (prevGBuckSz == updtGBuckSz) { // No reinsertions!
+	  LOG(ALG_DELTASTEPPING_DEBUG, "NO REINSERTIONS IN BUCKET!");
+	  gMinBuck->clear();
+	  gMinBuckIdx = getMinBuckIdx();
+	  gMinBuck = &bucks.at(gMinBuckIdx);
+	  gMinBuckStartIdx = 0;
+	}
+	else {
+	  LOG(ALG_DELTASTEPPING_DEBUG, "FOUND REINSERTION! JUST UPDATE THE NEW STARTING INDEX");
+	  gMinBuckStartIdx = prevGBuckSz;
+	}
+      }
+      
+      lBucks.clear();
+      #pragma omp barrier
     }
-    
-    numActiveThreads = getMinBuckPrl(tlBucks);
+  }
+
+  if (ALG_DELTASTEPPING_DEBUG) {
+    assertEqualRes(parallel, dijkstra);
   }
   
   LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltastepping::parallel");
 }
-
-  
-void deltaStepping::parallelListDeprecated()
-{
-  LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallelListDeprecated");
-  
-  preprocessing();
-
-  buckT* minBuck = nullptr;
-  while (minBuck = getMinBuck()) {
-
-    req.clear();
-    
-#   pragma omp parallel for					\
-  num_threads(num<unsigned>::min(numThreads, minBuck->size()))
-    for (unsigned buckIdx = 0; buckIdx < minBuck->size(); ++buckIdx) {
-      nodeIdT srcNodeId;
-      srcNodeId = minBuck->front();
-#     pragma omp critical
-      minBuck->pop_front();
-
-      auto srcNode = diGraph->at(srcNodeId);
-      auto* edges = srcNode->getOutEdges();
-      if (edges != nullptr) {
-	for (unsigned edgeIdx = 0; edgeIdx < edges->size(); ++edgeIdx) {
-	  nodeIdT& destNodeId = edges->at(edgeIdx).first;
-	  weightT& edgeWeight = edges->at(edgeIdx).second;
-
-	  distT newDist = dists.at(srcNodeId) + edgeWeight;
-	  if (newDist < dists.at(destNodeId)) {
-#           pragma omp critical
-	    {
-	      if (dists.at(destNodeId) != infDist) {
-		bucks.at(dists.at(destNodeId) / delta).remove(destNodeId);
-	      }
-	      bucks.at(newDist / delta).push_back(destNodeId);
-	      dists.at(destNodeId) = newDist;
-	    }
-	  }
-	}
-      }
-    }
-  }
-  
-  LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallelListDeprecated");
-}
-
 
 //===----------------------------------------------------------===//
 // Parallel algorithm with bucket fusion
@@ -297,30 +311,23 @@ void deltaStepping::parallelBucketFusion()
 
 void deltaStepping::preprocessingPrl()
 {
-  preprocessing();
+  initBucksDists();
 }
   
 void deltaStepping::preprocessing()
 {
   // Allocate buckets and distances
   initBucksDists();
+  rm.resize(diGraph->getNumNodes());
 }
 
-unsigned deltaStepping::getMinBuckPrl(tlBucksT& tlBucks) {
-  unsigned bIdx = 0;
-  unsigned tlbIdx = 0;
-  for (bIdx = 0; bIdx < bucks.size() && tlbIdx < tlBucks.size(); ++bIdx) {
-    if (!bucks.at(bIdx).empty()) {
-      tlBucks.at(tlbIdx++) = bIdx;
+unsigned deltaStepping::getMinBuckIdx() {
+  for (unsigned i = 0; i < bucks.size(); ++i) {
+    if (!bucks.at(i).empty()) {
+      return i;
     }
   }
-  unsigned numActiveThreads = tlbIdx;
-  LOGATT(ALG_DELTASTEPPING_DEBUG, numActiveThreads);
-  // Replace the old buckets with a special value, if didnt find new ones.
-  while (tlbIdx < tlBucks.size()) {
-    tlBucks.at(tlbIdx++) = maxUns;
-  }
-  return numActiveThreads;
+  return maxUns;
 }
   
 
@@ -439,19 +446,35 @@ void deltaStepping::relaxRequests(reqT& reqs)
     relax(req.first, req.second);
 }
 
+void deltaStepping::relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks)
+{
+  auto* edges = diGraph->at(srcNodeId)->getOutEdges();
+  if (edges != nullptr) {
+    for (unsigned i = 0; i < edges->size(); ++i) {
+      nodeIdT& destNodeId = edges->at(i).first;
+      weightT& edgeWeight = edges->at(i).second;
+      
+      distT& oldDist = dists.at(destNodeId);
+      distT newDist = dists.at(srcNodeId) + edgeWeight;
+      if (newDist < oldDist) {
+	// FIXME: this might not be thread-safe
+	dists.at(destNodeId) = newDist;
+	unsigned buckPos = newDist / delta;
+	if (buckPos >= lBucks.size()) {
+	  lBucks.resize(buckPos + 1);
+	}
+	lBucks.at(buckPos).push_back(destNodeId);
+      }
+    }
+  }
+}
+
 void deltaStepping::relax(nodeIdT nid, distT newDist)
 {
   LOG(ALG_DELTASTEPPING_DEBUG, "relaxing node %u with tentative distance %u",
       nid, newDist);
-  if (dists.at(nid) != infDist) {
-    if (newDist < dists.at(nid)) {
-      bucks.at(dists.at(nid) / delta).remove(nid);
-      bucks.at(newDist / delta).push_back(nid);
-      dists.at(nid) = newDist;
-    }
-  }
-  else {
-    bucks.at(newDist / delta).push_back(nid);    
+  if (newDist < dists.at(nid)) {
+    bucks.at(newDist / delta).push_back(nid);
     dists.at(nid) = newDist;
   }
 }
@@ -483,12 +506,6 @@ void deltaStepping::recycleBucks()
   bucks.setBeggining(i + bucks.getBeggining());
 }
 
-// FIXME: deprecated
-bool deltaStepping::isEmpty(tlBucksT& tlBucks)
-{
-  return tlBucks.front() == maxUns;
-}
-
 //===----------------------------------------------------------===//
 // Debugging procedures
 //===----------------------------------------------------------===//
@@ -498,16 +515,6 @@ void deltaStepping::printBuck(buckT& buck)
   std::cerr << "Printing bucket\n";
   for (auto nid : buck) {
     std::cerr << nid << ' ';
-  }
-  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
-}
-
-void deltaStepping::printTlBucks(tlBucksT& tlBucks)
-{
-  std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
-  std::cerr << "Printing tlBucks\n";
-  for (auto buckId : tlBucks) {
-    std::cerr << buckId << ' ';
   }
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
@@ -544,6 +551,12 @@ void deltaStepping::printDists(distsT& dists)
     }
   }
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+}
+
+void deltaStepping::assertEqualRes(void (deltaStepping::* alg1)(),
+				   void (deltaStepping::* alg2)())
+{
+  
 }
 
 }
