@@ -97,18 +97,22 @@ void deltaStepping::run(digraph* inGraph, const char* mode,
   if (modeStr == "sequential")
     sequential();
   else if (modeStr == "parallel") {
-    parallel();
     if (ALG_DELTASTEPPING_ASSERT) {
       assertEqualRes(&deltaStepping::parallel,
 		     &deltaStepping::dijkstra);
     }
+    else {
+      parallel();
+    }
   }
   else if (modeStr == "parallel-bucket-fusion") {
-    parallelBucketFusion();
     if (ALG_DELTASTEPPING_ASSERT) {
       assertEqualRes(&deltaStepping::parallelBucketFusion,
 		     &deltaStepping::dijkstra);
     }
+    else {
+      parallelBucketFusion();
+    }      
   }
   else if (modeStr == "dijkstra")
     dijkstra();

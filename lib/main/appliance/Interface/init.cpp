@@ -170,9 +170,9 @@ void init::readEdges() noexcept(false)
 
   unsigned numNodes = 0;
   unsigned lineCounter = 1;
-  int nodeMaxId = -1;
+  int maxNodeId = numeric_limits<int>::min();
   while (inFile.good()) {
-    if (!lineCounter % 100)
+    if (!lineCounter % 1000)
       LOGATT(INTERFACE_INIT_DEBUG, lineCounter);
 
     // <node1, node2, weight>
@@ -187,13 +187,19 @@ void init::readEdges() noexcept(false)
     num<int>::checkInRange(edge.node2, 1, kmaxNodeId - 1);
     num<int>::checkInRange(edge.weight, 0, kmaxWeight - 1);
 
+    if (edge.node1 > maxNodeId) {
+      maxNodeId = edge.node1;
+    }
+    if (edge.node2 > maxNodeId) {
+      maxNodeId = edge.node2;
+    }
     // If needed, resize
-    nodeMaxId = num<int>::max(edge.node1, edge.node2);
 #   pragma GCC diagnostic ignored "-Wsign-compare"
-    if (nodeMaxId > graphNodes.size()) {
-      graphNodes.resize(num<int>::max(nodeMaxId,
+    if (maxNodeId > graphNodes.size()) {
+      LOG(1, "About to resize stuff");
+      graphNodes.resize(num<int>::max(maxNodeId,
                                       graphNodes.size() + bitsetAllocSz));
-      numEdges.resize(num<int>::max(nodeMaxId,
+      numEdges.resize(num<int>::max(maxNodeId,
                                     numEdges.size() + bitsetAllocSz), 0);
     }
 
@@ -217,10 +223,11 @@ void init::readEdges() noexcept(false)
   if (!inFile.eof()) {
     throw logic_error{"(readEdges) encountered error while read input file"};
   }
-
-  // Allocate all the digraph nodes here. This avoids memory fragmentation.
-  inGraph = new digraph(static_cast<unsigned>(graphNodes.count()), numEdges);
   
+  // Allocate all the digraph nodes here. This avoids memory fragmentation.
+  inGraph = new digraph(static_cast<unsigned>(maxNodeId), numEdges);
+
+  LOG(1, "About to insert edges in graph");
   for (auto edge : graphEdges) {
     inGraph->insertEdge(edge.node1, edge.node2, edge.weight,
                         --numEdges.at(edge.node1));
@@ -229,7 +236,8 @@ void init::readEdges() noexcept(false)
   DEBUG(INTERFACE_INIT_DEBUG, "End -- readEdges");
 }
 
-// Additionally marks if the file has a %%Header
+// Additionally marks if the file has a %%Header (header must to be
+// after '%%').
 void init::ignoreComments() noexcept(false)
 {
   DEBUG(INTERFACE_INIT_DEBUG, "Start -- IgnoreComments");
