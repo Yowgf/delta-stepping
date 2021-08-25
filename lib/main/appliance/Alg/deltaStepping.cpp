@@ -6,8 +6,9 @@
 //===----------------------------------------------------------===//
 
 #include "Alg/deltaStepping.hpp"
-#include "Utils/str.hpp"
+#include "Utils/fun.hpp"
 #include "Utils/num.hpp"
+#include "Utils/str.hpp"
 
 #ifdef _OPENMP
 #include "omp.h"
@@ -15,7 +16,6 @@
 
 #include <cassert>
 #include <cmath>
-#include <functional>
 #include <queue>
 #include <stdexcept>
 
@@ -96,10 +96,20 @@ void deltaStepping::run(digraph* inGraph, const char* mode,
   const string modeStr{mode};
   if (modeStr == "sequential")
     sequential();
-  else if (modeStr == "parallel")
+  else if (modeStr == "parallel") {
     parallel();
-  else if (modeStr == "parallel-bucket-fusion")
+    if (ALG_DELTASTEPPING_ASSERT) {
+      assertEqualRes(&deltaStepping::parallel,
+		     &deltaStepping::dijkstra);
+    }
+  }
+  else if (modeStr == "parallel-bucket-fusion") {
     parallelBucketFusion();
+    if (ALG_DELTASTEPPING_ASSERT) {
+      assertEqualRes(&deltaStepping::parallelBucketFusion,
+		     &deltaStepping::dijkstra);
+    }
+  }
   else if (modeStr == "dijkstra")
     dijkstra();
   else
@@ -286,10 +296,6 @@ void deltaStepping::parallel()
       lBucks.clear();
       #pragma omp barrier
     }
-  }
-
-  if (ALG_DELTASTEPPING_DEBUG) {
-    assertEqualRes(parallel, dijkstra);
   }
   
   LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltastepping::parallel");
@@ -553,10 +559,30 @@ void deltaStepping::printDists(distsT& dists)
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
 
-void deltaStepping::assertEqualRes(void (deltaStepping::* alg1)(),
-				   void (deltaStepping::* alg2)())
+void deltaStepping::assertEqualRes(void (deltaStepping::* f1)(),
+				   void (deltaStepping::* f2)())
 {
-  
+  LOG(ALG_DELTASTEPPING_ASSERT, "Start -- assertEqualRes");
+  (this->*f1)();
+  distsT dists1 = dists;
+  (this->*f2)();
+  distsT& dists2 = dists;
+
+  assert(compareDists(dists1, dists2));
+  LOG(ALG_DELTASTEPPING_ASSERT, "End -- assertEqualRes");
+}
+
+bool deltaStepping::compareDists(distsT& d1, distsT& d2)
+{
+  if (d1.size() != d2.size()) {
+    return false;
+  }
+  for (unsigned i = 0; i < d1.size(); ++i) {
+    if (d1.at(i) != d2.at(i)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }

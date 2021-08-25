@@ -18,6 +18,7 @@
 
 #include "boost/dynamic_bitset.hpp"
 
+#include <functional>
 #include <fstream>
 #include <limits>
 #include <list>
@@ -126,8 +127,9 @@ private:
   void printReq(reqT& req);
   void printBs(boost::dynamic_bitset<>& bs);
   void printDists(distsT& dists);
-  void assertEqualRes(void (deltaStepping::* alg1)(),
-		      void (deltaStepping::* alg2)());
+  void assertEqualRes(void (deltaStepping::* f1)(),
+		      void (deltaStepping::* f2)());
+  bool compareDists(distsT&, distsT&);
 };
 
 }
