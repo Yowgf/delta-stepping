@@ -196,7 +196,6 @@ void init::readEdges() noexcept(false)
     // If needed, resize
 #   pragma GCC diagnostic ignored "-Wsign-compare"
     if (maxNodeId > graphNodes.size()) {
-      LOG(1, "About to resize stuff");
       graphNodes.resize(num<int>::max(maxNodeId,
                                       graphNodes.size() + bitsetAllocSz));
       numEdges.resize(num<int>::max(maxNodeId,
@@ -227,7 +226,6 @@ void init::readEdges() noexcept(false)
   // Allocate all the digraph nodes here. This avoids memory fragmentation.
   inGraph = new digraph(static_cast<unsigned>(maxNodeId), numEdges);
 
-  LOG(1, "About to insert edges in graph");
   for (auto edge : graphEdges) {
     inGraph->insertEdge(edge.node1, edge.node2, edge.weight,
                         --numEdges.at(edge.node1));
