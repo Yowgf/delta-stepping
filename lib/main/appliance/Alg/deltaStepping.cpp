@@ -258,7 +258,6 @@ void deltaStepping::parallel()
   {
     lBucksT lBucks; // Local buckets
     while (gMinBuckIdx != maxUns) {
-      LOG(ALG_DELTASTEPPING_DEBUG, "Hello from thread %u", omp_get_thread_num());
       #pragma omp single nowait
       prevGBuckSz = gMinBuck->size();
       #pragma omp for nowait schedule(dynamic, 64)
@@ -267,7 +266,6 @@ void deltaStepping::parallel()
 	relaxEdgesPrl(srcNode, lBucks);
       }
       
-      LOG(ALG_DELTASTEPPING_DEBUG, "Hello2 from thread %u", omp_get_thread_num());
       #pragma omp barrier
       // Copy local buckets to global one
       LOG(ALG_DELTASTEPPING_DEBUG, "Printing local buckets");
@@ -336,16 +334,33 @@ void deltaStepping::parallelBucketFusion()
   {
     lBucksT lBucks; // Local buckets
     while (gMinBuckIdx != maxUns) {
-      LOG(ALG_DELTASTEPPING_DEBUG, "Hello from thread %u", omp_get_thread_num());
       #pragma omp single
       prevGBuckSz = gMinBuck->size();
       #pragma omp for nowait schedule(dynamic, 64)
-      for (unsigned i = localBuckPos; i < gMinBuck->size(); ++i) {
+      for (unsigned i = gMinBuckStartIdx; i < gMinBuck->size(); ++i) {
 	nodeIdT srcNode = gMinBuck->at(i);
 	relaxEdgesPrl(srcNode, lBucks);
       }
+
+      // Bucket fusion
+      if (!lBucks.empty()) {
+	unsigned lbIdx = 0;
+	while (!lBucks[lbIdx].empty() &&
+	       lBucks[lbIdx].size() < kminBuckThreshold) {
+	  // This copy is necessary, because we want to remove nodes
+	  //   from the local bucket, which is not a normal procedure.
+	  //
+	  // In bucket fusion, if the bucket is small enough, we do all
+	  //   the work locally, instead of copying it to the global
+	  //   bucket for later processing.
+	  auto lBuckCopy = lBucks[lbIdx];
+	  lBucks[lbIdx].resize(0);
+	  for (auto srcNode : lBuckCopy) {
+	    relaxEdgesPrl(srcNode, lBucks);
+	  }
+	}
+      }
       
-      LOG(ALG_DELTASTEPPING_DEBUG, "Hello2 from thread %u", omp_get_thread_num());
       #pragma omp barrier
       // Copy local buckets to global one
       LOG(ALG_DELTASTEPPING_DEBUG, "Printing local buckets");
