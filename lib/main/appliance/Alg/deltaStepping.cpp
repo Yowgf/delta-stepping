@@ -344,7 +344,7 @@ void deltaStepping::parallelBucketFusion()
 
       // Bucket fusion
       if (!lBucks.empty()) {
-	unsigned lbIdx = 0;
+	const unsigned lbIdx = 0;
 	while (!lBucks[lbIdx].empty() &&
 	       lBucks[lbIdx].size() < kminBuckThreshold) {
 	  // This copy is necessary, because we want to remove nodes
@@ -544,6 +544,7 @@ reqT deltaStepping::findRequestsAux(const boost::dynamic_bitset<>& curBuck,
   return req;
 }
 
+inline
 void deltaStepping::relaxRequests(reqT& reqs)
 {
   for (auto req : reqs)
@@ -574,6 +575,7 @@ void deltaStepping::relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks)
   }
 }
 
+inline
 void deltaStepping::relax(nodeIdT nid, distT newDist)
 {
   LOG(ALG_DELTASTEPPING_DEBUG, "relaxing node %u with tentative distance %u",
@@ -584,16 +586,19 @@ void deltaStepping::relax(nodeIdT nid, distT newDist)
   }
 }
 
+inline
 bool deltaStepping::isLight(weightT w)
 {
   return w <= delta;
 }
 
+inline
 bool deltaStepping::isHeavy(weightT w)
 {
   return w > delta;
 }
 
+inline
 void deltaStepping::bitsetListUnion(boost::dynamic_bitset<>& bs, 
                                     const buckT& ls)
 {
@@ -602,6 +607,7 @@ void deltaStepping::bitsetListUnion(boost::dynamic_bitset<>& bs,
   }
 }
 
+inline
 void deltaStepping::recycleBucks()
 {
   unsigned i = 0;
@@ -614,6 +620,7 @@ void deltaStepping::recycleBucks()
 //===----------------------------------------------------------===//
 // Debugging procedures
 //===----------------------------------------------------------===//
+inline
 void deltaStepping::printBuck(buckT& buck)
 {
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
@@ -624,6 +631,7 @@ void deltaStepping::printBuck(buckT& buck)
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
 
+inline
 void deltaStepping::printReq(reqT& reqs)
 {
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
@@ -634,6 +642,7 @@ void deltaStepping::printReq(reqT& reqs)
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
 
+inline
 void deltaStepping::printBs(boost::dynamic_bitset<>& bs)
 {
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
@@ -646,6 +655,7 @@ void deltaStepping::printBs(boost::dynamic_bitset<>& bs)
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
 
+inline
 void deltaStepping::printDists(distsT& dists)
 {
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
@@ -658,6 +668,7 @@ void deltaStepping::printDists(distsT& dists)
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
 
+inline
 void deltaStepping::assertEqualRes(void (deltaStepping::* f1)(),
 				   void (deltaStepping::* f2)())
 {
@@ -671,6 +682,7 @@ void deltaStepping::assertEqualRes(void (deltaStepping::* f1)(),
   LOG(ALG_DELTASTEPPING_ASSERT, "End -- assertEqualRes");
 }
 
+inline
 bool deltaStepping::compareDists(distsT& d1, distsT& d2)
 {
   if (d1.size() != d2.size()) {

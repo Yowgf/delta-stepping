@@ -192,20 +192,20 @@ void init::readEdges() noexcept(false)
     // <node1, node2, weight>
     DS::wEdge<int, int, int> edge(-1, -1, -1);
   
-    inFile >> edge.node1 >> edge.node2 >> edge.weight;
-    if (edge.node1 == -1) 
+    inFile >> edge.node1() >> edge.node2() >> edge.weight();
+    if (edge.node1() == -1) 
       break; // Hopefully true means EOF
 
     // Check if inputs are in the right range
-    num<int>::checkInRange(edge.node1, 1, kmaxNodeId - 1);
-    num<int>::checkInRange(edge.node2, 1, kmaxNodeId - 1);
-    num<int>::checkInRange(edge.weight, 0, kmaxWeight - 1);
+    num<int>::checkInRange(edge.node1(), 1, kmaxNodeId - 1);
+    num<int>::checkInRange(edge.node2(), 1, kmaxNodeId - 1);
+    num<int>::checkInRange(edge.weight(), 0, kmaxWeight - 1);
 
-    if (edge.node1 > maxNodeId) {
-      maxNodeId = edge.node1;
+    if (edge.node1() > maxNodeId) {
+      maxNodeId = edge.node1();
     }
-    if (edge.node2 > maxNodeId) {
-      maxNodeId = edge.node2;
+    if (edge.node2() > maxNodeId) {
+      maxNodeId = edge.node2();
     }
     // If needed, resize
 #   pragma GCC diagnostic ignored "-Wsign-compare"
@@ -217,18 +217,18 @@ void init::readEdges() noexcept(false)
     }
 
     // Update graphNodes, graphEdges, numEdges
-    graphNodes[edge.node1] = true;
-    graphNodes[edge.node2] = true;
+    graphNodes[edge.node1()] = true;
+    graphNodes[edge.node2()] = true;
 
     // Fix node ids. Files should come with range starting from 1, but we want
     // it starting from 0. This makes everything easier, later on.
-    edge.node1--;
-    edge.node2--;
+    edge.node1()--;
+    edge.node2()--;
     graphEdges.push_back(edge);
 
-    LOG(INTERFACE_INIT_DEBUG,
-        "About to insert edge %d %d", edge.node1, edge.node2);
-    numEdges.at(edge.node1)++;
+    // LOG(INTERFACE_INIT_DEBUG,
+    //     "About to insert edge %d %d", edge.node1, edge.node2);
+    numEdges.at(edge.node1())++;
 
     lineCounter++;
   }
@@ -239,10 +239,9 @@ void init::readEdges() noexcept(false)
   
   // Allocate all the digraph nodes here. This avoids memory fragmentation.
   inGraph = new digraph(static_cast<unsigned>(maxNodeId), numEdges);
-
   for (auto edge : graphEdges) {
-    inGraph->insertEdge(edge.node1, edge.node2, edge.weight,
-                        --numEdges.at(edge.node1));
+    inGraph->insertEdge(edge.node1(), edge.node2(), edge.weight(),
+                        --numEdges.at(edge.node1()));
   }
 
   DEBUG(INTERFACE_INIT_DEBUG, "End -- readEdges");
