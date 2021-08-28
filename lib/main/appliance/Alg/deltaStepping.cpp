@@ -26,8 +26,12 @@ namespace Alg {
 
 using digraph = DS::digraph<nodeIdT>;
 
+// Static members
+float deltaStepping::delta = 0.0;
+
 deltaStepping::deltaStepping()
-  : sourceNode(0) // TODO: find more sofisticated way to decide on this
+  : sourceNode(0), // TODO: find more sofisticated way to decide on this
+    kminBuckThreshold(1000)
 {}
 
 
@@ -87,10 +91,10 @@ deltaStepping::~deltaStepping()
 // - How to aggregate the tasks?
 // - How to map the aggregated tasks to threads?
 void deltaStepping::run(digraph* inGraph, const char* mode, 
-			const unsigned numThreads)
+			const float delta, const unsigned numThreads)
 {
   // Intialize internal variables
-  initInternalVars(inGraph, mode, numThreads);
+  initInternalVars(inGraph, mode, delta, numThreads);
 
   // TODO: is there anything that should be done under every mode?
   const string modeStr{mode};
@@ -125,8 +129,14 @@ void deltaStepping::run(digraph* inGraph, const char* mode,
 //===----------------------------------------------------------===//
 
 void deltaStepping::initInternalVars(digraph* inGraph, const char* mode,
+				     const float delta,
 				     const unsigned numThreads)
 {
+  if (delta < 1.0) {
+    throw std::logic_error{string("Invalid delta '") +
+			     to_string(delta) + "'"};
+  }
+  this->delta = delta;
   if (numThreads < 1) {
     throw std::logic_error{string("Invalid number of threads '") +
 			     to_string(numThreads) + "'"};
@@ -233,7 +243,6 @@ void deltaStepping::sequential()
 void deltaStepping::parallel()
 {
   LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltastepping::parallel");
-
   preprocessingPrl();
 
   // Global vars
@@ -257,6 +266,7 @@ void deltaStepping::parallel()
 	nodeIdT srcNode = gMinBuck->at(i);
 	relaxEdgesPrl(srcNode, lBucks);
       }
+      
       LOG(ALG_DELTASTEPPING_DEBUG, "Hello2 from thread %u", omp_get_thread_num());
       #pragma omp barrier
       // Copy local buckets to global one
@@ -311,6 +321,75 @@ void deltaStepping::parallel()
 void deltaStepping::parallelBucketFusion()
 {
   LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltaStepping::parallelBucketFusion");
+  preprocessingPrl();
+
+  // Global vars
+  unsigned gMinBuckIdx = getMinBuckIdx();
+  buckT* gMinBuck = &bucks.at(gMinBuckIdx);
+  unsigned nextGMinBuckIdx = maxUns;
+  unsigned prevGBuckSz = 0;
+  unsigned gMinBuckStartIdx = 0;
+  
+  // It seems to be a good idea to not place the parallel directive inside the
+  // main loop, to avoid thread management overheads.
+  #pragma omp parallel num_threads(numThreads)
+  {
+    lBucksT lBucks; // Local buckets
+    while (gMinBuckIdx != maxUns) {
+      LOG(ALG_DELTASTEPPING_DEBUG, "Hello from thread %u", omp_get_thread_num());
+      #pragma omp single
+      prevGBuckSz = gMinBuck->size();
+      #pragma omp for nowait schedule(dynamic, 64)
+      for (unsigned i = localBuckPos; i < gMinBuck->size(); ++i) {
+	nodeIdT srcNode = gMinBuck->at(i);
+	relaxEdgesPrl(srcNode, lBucks);
+      }
+      
+      LOG(ALG_DELTASTEPPING_DEBUG, "Hello2 from thread %u", omp_get_thread_num());
+      #pragma omp barrier
+      // Copy local buckets to global one
+      LOG(ALG_DELTASTEPPING_DEBUG, "Printing local buckets");
+      for (unsigned i = 0; i < lBucks.size(); ++i) {
+	if (!lBucks.at(i).empty()) {
+          #pragma omp critical
+	  {
+	    LOG(ALG_DELTASTEPPING_DEBUG, "gbuck before copy:");
+	    if (ALG_DELTASTEPPING_DEBUG) {
+	      printBuck(bucks.at(i));
+	    }
+	    lBuckT& lRefBuck = lBucks.at(i);
+	    buckT& gRefBuck = bucks.at(i);
+	    gRefBuck.insert(gRefBuck.end(), lRefBuck.begin(), lRefBuck.end());
+	    LOG(ALG_DELTASTEPPING_DEBUG, "gbuck after copy:");
+	    if (ALG_DELTASTEPPING_DEBUG) {
+	      printBuck(bucks.at(i));
+	    }
+	  }
+	}
+      }
+      #pragma omp barrier
+
+      #pragma omp single nowait
+      {
+	unsigned updtGBuckSz = gMinBuck->size();
+	if (prevGBuckSz == updtGBuckSz) { // No reinsertions!
+	  LOG(ALG_DELTASTEPPING_DEBUG, "NO REINSERTIONS IN BUCKET!");
+	  gMinBuck->clear();
+	  gMinBuckIdx = getMinBuckIdx();
+	  gMinBuck = &bucks.at(gMinBuckIdx);
+	  gMinBuckStartIdx = 0;
+	}
+	else {
+	  LOG(ALG_DELTASTEPPING_DEBUG, "FOUND REINSERTION! JUST UPDATE THE NEW STARTING INDEX");
+	  gMinBuckStartIdx = prevGBuckSz;
+	}
+      }
+      
+      lBucks.clear();
+      #pragma omp barrier
+    }
+  }
+  
   LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallelBucketFusion");
 }
 
@@ -456,6 +535,7 @@ void deltaStepping::relaxRequests(reqT& reqs)
     relax(req.first, req.second);
 }
 
+inline
 void deltaStepping::relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks)
 {
   auto* edges = diGraph->at(srcNodeId)->getOutEdges();

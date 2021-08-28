@@ -29,11 +29,13 @@ public:
   ~init();
 
 private:
-  static constexpr int kminProgArgs = 3;
-  static constexpr int kmaxProgArgs = 4;
-  static constexpr int knumProgArgsWithThreads = 4;
+  static constexpr int kminProgArgs = 4;
+  static constexpr int kmaxProgArgs = 5;
+  static constexpr int knumProgArgsWithThreads = 5;
   static constexpr unsigned kmaxFileNameLen = 0x100;
   static constexpr unsigned kmaxModeLen = 0x100;
+  static constexpr float kminDelta = 1;
+  static constexpr float kmaxDelta = 1e8f;
   static constexpr int kminNumThreads = 1;
   static constexpr int kmaxNumThreads = 0x100;
   
@@ -45,6 +47,7 @@ private:
   bool inFileHasHeader;
   std::string inMode;
   unsigned numThreads;
+  float delta;
 
   std::string outFileName; // Built with inFileName
   std::ifstream inFile;

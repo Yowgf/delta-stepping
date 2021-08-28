@@ -1,7 +1,7 @@
 #!/bin/bash
 
 usage() {
-    printf "Usage: <script> <num-processes> <llim> <rlim> <step>"
+    printf "Usage: <script> <runXTimes> <testFile> <testMode> <testNumThreads>"
 }
 
 run() {
@@ -28,7 +28,7 @@ run() {
     while (( i < $runXTimes )); do
         execCommand="$execPath $execBaseArgs $testFile $testMode $testNumThreads"
         echo $execCommand
-	outFileName=$outFileBaseName$(basename $testFile)-$testMode-run$i.out
+	outFileName=$outFileBaseName$(basename $testFile)-$testMode$testNumThreads-run$i.out
         $execCommand > $outFileName
         i=$(( $i + 1 ))
     done

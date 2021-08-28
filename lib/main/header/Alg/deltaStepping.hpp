@@ -48,7 +48,8 @@ public:
   deltaStepping();
   ~deltaStepping();
 
-  void run(digraph* inGraph, const char* mode, const unsigned numThreads);
+  void run(digraph* inGraph, const char* mode, const float delta,
+	   const unsigned numThreads);
   distsT& getDists();
   void printOutToFile(const char* outFileName);
   void printOutToStream(std::ostream& os);
@@ -59,7 +60,7 @@ private:
   unsigned numThreads;
   
   void initInternalVars(digraph* inGraph, const char* mode,
-			const unsigned numThreads);
+			const float delta, const unsigned numThreads);
   void assignGraph(digraph* inGraph);
   void invalidMode(const char* mode);
 
@@ -69,11 +70,14 @@ private:
   distsT dists;
   bucksT bucks;
 
-  static constexpr float delta = 100; // TODO: make this a user argument.
+  static float delta;
   const nodeIdT sourceNode;
   // Our reusable definition of infinity
   const distT infDist = std::numeric_limits<distT>::max();
   const unsigned maxUns = std::numeric_limits<unsigned>::max();
+
+  // Parallel bucket fusion implementation needs these
+  const unsigned kminBuckThreshold;
 
   // rm is the current set of removed nodes
   boost::dynamic_bitset<> rm;

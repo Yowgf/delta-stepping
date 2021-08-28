@@ -31,13 +31,13 @@ using namespace std;
 namespace Interface {
   
 init::init(int argc, char** argv)
-  : inFileHasHeader(false), inGraph(nullptr), numThreads(1)
+  : inFileHasHeader(false), inGraph(nullptr), numThreads(1), delta(0.0)
 {
   const bool isProgArgsValid = validateArguments(argc, argv);
   if (!isProgArgsValid) {
     throw std::invalid_argument {"Invalid program arguments"\
                                    "\nUsage: <program> <in-file>"\
-                                   " <mode> [<num-threads>]"};
+                                   " <mode> <delta-step> [<num-threads>]"};
   }
 
   // This loads inGraph
@@ -51,6 +51,7 @@ init::init(int argc, char** argv)
     Alg::deltaStepping dsRun;
     TIME_EXECUTION(clkVar,
 		   dsRun.run(inGraph, inMode.c_str(),
+			     delta,
 			     static_cast<unsigned>(numThreads))
 		   );
 
@@ -95,9 +96,18 @@ bool init::validateArguments(int argc, char** argv) const noexcept
     return false;
   }
 
+  std::stringstream ss;
+  float inDelta = 0.0;
+  ss << argv[3];
+  ss >> inDelta;
+  if (!INRANGE(inDelta, kminDelta, kmaxDelta)) {
+    return false;
+  }
+  ss.clear();
+  
   if (argc == knumProgArgsWithThreads) {
     int numThreadsIn = 0;
-    std::stringstream ss(argv[knumProgArgsWithThreads - 1]);
+    ss << argv[knumProgArgsWithThreads - 1];
     ss >> numThreadsIn;
     if (!INRANGE(numThreadsIn, kminNumThreads, kmaxNumThreads)) {
       return false;
@@ -113,8 +123,12 @@ bool init::validateArguments(int argc, char** argv) const noexcept
 // ...
 void init::processEntries(int argc, char** argv) noexcept(false)
 {
+  std::stringstream ss;
+  ss << argv[3];
+  ss >> delta;
+  ss.clear();
   if (argc == knumProgArgsWithThreads) {
-    std::stringstream ss(argv[knumProgArgsWithThreads - 1]);
+    ss << argv[knumProgArgsWithThreads - 1];
     ss >> numThreads;
   }
   // Read file name, mode, and then open the file and start reading
