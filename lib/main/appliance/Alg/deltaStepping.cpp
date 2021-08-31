@@ -10,13 +10,23 @@
 #include "Utils/num.hpp"
 #include "Utils/str.hpp"
 
+#include <chrono>
 #include <cassert>
 #include <cmath>
+#include <iomanip>
 #include <queue>
 #include <stdexcept>
 
 using namespace std;
 using namespace Utils;
+
+using clkT = std::chrono::duration<double>;
+clkT gPart1Temp = clkT::zero();
+clkT gPart1Sum = clkT::zero();
+clkT gPart2Temp = clkT::zero();
+clkT gPart2Sum = clkT::zero();
+clkT gPart3Temp = clkT::zero();
+clkT gPart3Sum = clkT::zero();
 
 namespace Alg {
 
@@ -228,6 +238,7 @@ void deltaStepping::parallel()
   {
     lBucksT lBucks; // Local buckets
     while (gMinBuckIdx != maxUns) {
+      auto lBefore = std::chrono::high_resolution_clock::now();
       #pragma omp single nowait
       prevGBuckSz = gMinBuck->size();
       #pragma omp for nowait schedule(dynamic, 64)
@@ -235,9 +246,31 @@ void deltaStepping::parallel()
 	nodeIdT srcNode = gMinBuck->at(i);
 	relaxEdgesPrl(srcNode, lBucks);
       }
+      auto elapsed = std::chrono::high_resolution_clock::now() - lBefore;
+      #pragma omp critical
+      gPart1Temp = gPart1Temp.count() > elapsed.count() ? gPart1Temp : elapsed;
       #pragma omp barrier
+      
+      #pragma omp single nowait
+      {
+	gPart1Sum += gPart1Temp;
+	gPart1Temp = clkT::zero();
+      }
+      
+      lBefore = std::chrono::high_resolution_clock::now();
       copyToGBuck(bucks, lBucks);
+      elapsed = std::chrono::high_resolution_clock::now() - lBefore;
+      #pragma omp critical
+      gPart2Temp = gPart2Temp.count() > elapsed.count() ? gPart2Temp : elapsed;
       #pragma omp barrier
+      
+      #pragma omp single nowait
+      {
+	gPart2Sum += gPart2Temp;
+	gPart2Temp = clkT::zero();
+      }
+      
+      lBefore = std::chrono::high_resolution_clock::now();
       #pragma omp single nowait
       {
 	unsigned updtGBuckSz = gMinBuck->size();
@@ -255,10 +288,22 @@ void deltaStepping::parallel()
       }
       
       lBucks.clear();
+      elapsed = std::chrono::high_resolution_clock::now() - lBefore;
+      #pragma omp critical
+      gPart3Temp = gPart3Temp.count() > elapsed.count() ? gPart3Temp : elapsed;
       #pragma omp barrier
+      #pragma omp single nowait
+      {
+	gPart3Sum += gPart3Temp;
+	gPart3Temp = clkT::zero();
+      }
     }
   }
 
+  std::cerr << std::fixed << std::setprecision(6) << gPart1Sum.count() << '\n';
+  std::cerr << std::fixed << std::setprecision(6) << gPart2Sum.count() << '\n';
+  std::cerr << std::fixed << std::setprecision(6) << gPart3Sum.count() << '\n';
+  
   postprocessingPrl();
   
   LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltastepping::parallel");
@@ -524,7 +569,6 @@ void deltaStepping::relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks)
 
 void deltaStepping::copyToGBuck(bucksT& gBuck, lBucksT& lBucks)
 {
-  LOG(ALG_DELTASTEPPING_DEBUG, "%u: boi1", omp_get_thread_num());
   for (unsigned i = 0; i < lBucks.size(); ++i) {
     if (!lBucks.at(i).empty()) {
       omp_set_lock(&locks[i]);
@@ -534,7 +578,6 @@ void deltaStepping::copyToGBuck(bucksT& gBuck, lBucksT& lBucks)
       omp_unset_lock(&locks[i]);
     }
   }
-  LOG(ALG_DELTASTEPPING_DEBUG, "%u: boi1", omp_get_thread_num());
 }
 
 
