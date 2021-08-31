@@ -62,6 +62,9 @@ private:
   //   the program is safe to run.
   void destroy();
 
+  // Time the run of the algorithm
+  void timeRunAlgo();
+  
   // Performs some basic validation on the program arguments.
   bool validateArguments(int argc, char** argv) const noexcept;
 

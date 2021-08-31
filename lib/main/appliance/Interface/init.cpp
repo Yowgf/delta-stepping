@@ -48,15 +48,7 @@ init::init(int argc, char** argv)
 # endif
   
   try {
-    Alg::deltaStepping dsRun;
-    TIME_EXECUTION(clkVar,
-		   dsRun.run(inGraph, inMode.c_str(),
-			     delta,
-			     static_cast<unsigned>(numThreads))
-		   );
-
-    writeOut(dsRun);
-    printOut(dsRun);
+    timeRunAlgo();
   }
   catch(std::exception&) {
     destroy();
@@ -74,6 +66,17 @@ void init::destroy()
   delete inGraph;
 }
 
+void init::timeRunAlgo()
+{
+  Alg::deltaStepping dsRun;
+  auto time1 = std::chrono::high_resolution_clock::now();
+  dsRun.run(inGraph, inMode.c_str(), delta, static_cast<unsigned>(numThreads));
+  clkVar = std::chrono::high_resolution_clock::now() - time1;
+
+  writeOut(dsRun);
+  printOut(dsRun);
+}
+  
 // Checks if the number of arguments is correct.
 // Check if the file given at argv[0] exists.
 // Check if the mode string given has proper size.

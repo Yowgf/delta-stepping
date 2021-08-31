@@ -4,13 +4,22 @@
 // File purpose: ~deltaStepping~ class declaration.
 //===----------------------------------------------------------===//
 
-// TODO: make the sequential version correct
-// TODO: optimize the entire algorithm
-// - usage of pairs seems to not be optimized
+// TODO: get twitter benchmark
+//
+// TODO: make sure the us road benchmark is the correct one. If so,
+//   insert unitary weights in it.
+// 
 // TODO: maybe remove dynamic_bitset-dependent implementations
+//
+// TODO: Rename the original paper implementation, to indicate
+// precisely this.
 
 #ifndef DELTA_STEPPING_H
 #define DELTA_STEPPING_H
+
+#ifdef _OPENMP
+#include "omp.h"
+#endif
 
 #include "DS/circVec.hpp"
 #include "DS/digraph.hpp"
@@ -18,7 +27,6 @@
 
 #include "boost/dynamic_bitset.hpp"
 
-#include <functional>
 #include <fstream>
 #include <limits>
 #include <list>
@@ -76,7 +84,8 @@ private:
   const distT infDist = std::numeric_limits<distT>::max();
   const unsigned maxUns = std::numeric_limits<unsigned>::max();
 
-  // Parallel bucket fusion implementation needs these
+  omp_lock_t* locks;
+  // Parallel bucket fusion needs this
   const unsigned kminBuckThreshold;
 
   // rm is the current set of removed nodes
@@ -97,6 +106,7 @@ private:
 
   void preprocessingPrl();
   void preprocessing();
+  void postprocessingPrl();
   unsigned getMinBuckIdx();
   buckT* getMinBuck();
   // FIXME: we are currently getting some graph attributes, such as edge weight,
@@ -118,6 +128,7 @@ private:
   void relaxRequests(reqT&);
   // Relaxes the outgoing edges of srcNode
   void relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks);
+  void copyToGBuck(bucksT&, lBucksT&);
   void relax(nodeIdT, distT);
   static bool isLight(weightT w);
   static bool isHeavy(weightT w);

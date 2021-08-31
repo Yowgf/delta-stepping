@@ -8,8 +8,6 @@
 #ifndef TIME_H
 #define TIME_H
 
-#include "Utils/defs.hpp"
-
 #include <chrono>
 
 #ifdef MEASURE_TIME

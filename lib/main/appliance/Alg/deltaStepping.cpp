@@ -10,10 +10,6 @@
 #include "Utils/num.hpp"
 #include "Utils/str.hpp"
 
-#ifdef _OPENMP
-#include "omp.h"
-#endif
-
 #include <cassert>
 #include <cmath>
 #include <queue>
@@ -31,7 +27,8 @@ float deltaStepping::delta = 0.0;
 
 deltaStepping::deltaStepping()
   : sourceNode(0), // TODO: find more sofisticated way to decide on this
-    kminBuckThreshold(1000)
+    kminBuckThreshold(1000),
+    locks(nullptr)
 {}
 
 
@@ -59,44 +56,13 @@ void deltaStepping::printOutToStream(std::ostream& os)
   
 deltaStepping::~deltaStepping()
 {}
-
   
-// Software engineering strategy:
-//
-// - Implement delta-stepping as described in the original
-// paper. Leave this implementation in a function of itself.
-//
-// - Parallelize the algorithm (use a different function).
-//
-// - Try to fit in bucket fusion, and any other optimizations I
-// might find useful. At this point, we must compare different
-// optimizations, so we need to have a timing framework ready.
-//
-////////////////////////////////////////////////////////////////////
-// Notes from delta-stepping: a parallel shoretest path algorithm
-// 1998:
-//
-// Buckets implemented as doubly-linked list. -- Should I put these
-// separated from the graph structure?
-////////////////////////////////////////////////////////////////////
-// Questions that have to be answered before implementing the
-// algorithm:
-//
-// - Which data structure to use for the buckets?
-// - Use eager or lazy bucket updates?
-// - Is the current graph data structure optimal for the algorithm?
-//
-// Foster's methodology:
-// - Which tasks can we identify in this algorithm?
-// - How to aggregate the tasks?
-// - How to map the aggregated tasks to threads?
 void deltaStepping::run(digraph* inGraph, const char* mode, 
 			const float delta, const unsigned numThreads)
 {
   // Intialize internal variables
   initInternalVars(inGraph, mode, delta, numThreads);
 
-  // TODO: is there anything that should be done under every mode?
   const string modeStr{mode};
   if (modeStr == "sequential")
     sequential();
@@ -240,6 +206,10 @@ void deltaStepping::sequential()
 //===----------------------------------------------------------===//
 // Parallel algorithm
 //===----------------------------------------------------------===//
+// Foster's methodology:
+// - Which tasks can we identify in this algorithm?
+// - How to aggregate the tasks?
+// - How to map the aggregated tasks to threads?
 void deltaStepping::parallel()
 {
   LOG(ALG_DELTASTEPPING_DEBUG, "Start -- deltastepping::parallel");
@@ -265,30 +235,9 @@ void deltaStepping::parallel()
 	nodeIdT srcNode = gMinBuck->at(i);
 	relaxEdgesPrl(srcNode, lBucks);
       }
-      
       #pragma omp barrier
-      // Copy local buckets to global one
-      LOG(ALG_DELTASTEPPING_DEBUG, "Printing local buckets");
-      for (unsigned i = 0; i < lBucks.size(); ++i) {
-	if (!lBucks.at(i).empty()) {
-          #pragma omp critical
-	  {
-	    LOG(ALG_DELTASTEPPING_DEBUG, "gbuck before copy:");
-	    if (ALG_DELTASTEPPING_DEBUG) {
-	      printBuck(bucks.at(i));
-	    }
-	    lBuckT& lRefBuck = lBucks.at(i);
-	    buckT& gRefBuck = bucks.at(i);
-	    gRefBuck.insert(gRefBuck.end(), lRefBuck.begin(), lRefBuck.end());
-	    LOG(ALG_DELTASTEPPING_DEBUG, "gbuck after copy:");
-	    if (ALG_DELTASTEPPING_DEBUG) {
-	      printBuck(bucks.at(i));
-	    }
-	  }
-	}
-      }
+      copyToGBuck(bucks, lBucks);
       #pragma omp barrier
-
       #pragma omp single nowait
       {
 	unsigned updtGBuckSz = gMinBuck->size();
@@ -309,6 +258,8 @@ void deltaStepping::parallel()
       #pragma omp barrier
     }
   }
+
+  postprocessingPrl();
   
   LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltastepping::parallel");
 }
@@ -347,12 +298,13 @@ void deltaStepping::parallelBucketFusion()
 	const unsigned lbIdx = 0;
 	while (!lBucks[lbIdx].empty() &&
 	       lBucks[lbIdx].size() < kminBuckThreshold) {
-	  // This copy is necessary, because we want to remove nodes
-	  //   from the local bucket, which is not a normal procedure.
+	  // This copy is necessary, because we want to remove nodes from the
+	  //   local bucket, which is not a normal procedure. Generally, we just
+	  //   dump new nodes on the global bucket.
 	  //
-	  // In bucket fusion, if the bucket is small enough, we do all
-	  //   the work locally, instead of copying it to the global
-	  //   bucket for later processing.
+	  // In bucket fusion, if the bucket is small enough, we do all the work
+	  //   locally, instead of copying it to the global bucket for later
+	  //   processing.
 	  auto lBuckCopy = lBucks[lbIdx];
 	  lBucks[lbIdx].resize(0);
 	  for (auto srcNode : lBuckCopy) {
@@ -360,30 +312,9 @@ void deltaStepping::parallelBucketFusion()
 	  }
 	}
       }
-      
       #pragma omp barrier
-      // Copy local buckets to global one
-      LOG(ALG_DELTASTEPPING_DEBUG, "Printing local buckets");
-      for (unsigned i = 0; i < lBucks.size(); ++i) {
-	if (!lBucks.at(i).empty()) {
-          #pragma omp critical
-	  {
-	    LOG(ALG_DELTASTEPPING_DEBUG, "gbuck before copy:");
-	    if (ALG_DELTASTEPPING_DEBUG) {
-	      printBuck(bucks.at(i));
-	    }
-	    lBuckT& lRefBuck = lBucks.at(i);
-	    buckT& gRefBuck = bucks.at(i);
-	    gRefBuck.insert(gRefBuck.end(), lRefBuck.begin(), lRefBuck.end());
-	    LOG(ALG_DELTASTEPPING_DEBUG, "gbuck after copy:");
-	    if (ALG_DELTASTEPPING_DEBUG) {
-	      printBuck(bucks.at(i));
-	    }
-	  }
-	}
-      }
+      copyToGBuck(bucks, lBucks);
       #pragma omp barrier
-
       #pragma omp single nowait
       {
 	unsigned updtGBuckSz = gMinBuck->size();
@@ -404,6 +335,8 @@ void deltaStepping::parallelBucketFusion()
       #pragma omp barrier
     }
   }
+
+  postprocessingPrl();
   
   LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallelBucketFusion");
 }
@@ -413,17 +346,30 @@ void deltaStepping::parallelBucketFusion()
 // Auxiliary procedures
 //===----------------------------------------------------------===//
 
+
 void deltaStepping::preprocessingPrl()
 {
   initBucksDists();
+  locks = new omp_lock_t[bucks.size()];
+  for (unsigned i = 0; i < bucks.size(); ++i) {
+    omp_init_lock(&locks[i]);
+  }
 }
-  
+
+
 void deltaStepping::preprocessing()
 {
   // Allocate buckets and distances
   initBucksDists();
   rm.resize(diGraph->getNumNodes());
 }
+
+
+void deltaStepping::postprocessingPrl()
+{
+  delete[] locks;
+}
+
 
 unsigned deltaStepping::getMinBuckIdx() {
   for (unsigned i = 0; i < bucks.size(); ++i) {
@@ -445,13 +391,14 @@ buckT* deltaStepping::getMinBuck()
   return nullptr;
 }
 
+
 void deltaStepping::initBucksDists()
 {
   initBucks();
   initDists();
 }
 
-// Initialize buckets
+
 void deltaStepping::initBucks()
 {
   const unsigned numBuckets = 
@@ -461,8 +408,7 @@ void deltaStepping::initBucks()
   bucks.resize(numBuckets);
 }
 
-// Initialize tentative distances
-// TODO: make sure this is correct.
+
 void deltaStepping::initDists()
 {
   // Initialize the distances to infinity, except for sourceNode
@@ -470,8 +416,7 @@ void deltaStepping::initDists()
   relax(sourceNode, 0);
 }
 
-// TODO: to optimize this function, find both light and heavy requests at once,
-// for the nodes being searched.
+
 reqT deltaStepping::findRequests(const buckT& curBuck, const unsigned mode)
 {
   switch (mode) {
@@ -484,6 +429,7 @@ reqT deltaStepping::findRequests(const buckT& curBuck, const unsigned mode)
         string("(findRequests) Invalid mode ") + to_string(mode)};
   }
 }
+
 
 reqT deltaStepping::findRequestsAux(const buckT& curBuck, 
                                     bool (*f)(weightT))
@@ -506,8 +452,7 @@ reqT deltaStepping::findRequestsAux(const buckT& curBuck,
   return req;
 }
 
-// TODO: to optimize this function, find both light and heavy requests at once,
-// for the nodes being searched.
+
 reqT deltaStepping::findRequests(const boost::dynamic_bitset<>& curBuck,
                                  const unsigned mode)
 {
@@ -521,6 +466,7 @@ reqT deltaStepping::findRequests(const boost::dynamic_bitset<>& curBuck,
         string("(findRequests) Invalid mode ") + to_string(mode)};
   }
 }
+
 
 reqT deltaStepping::findRequestsAux(const boost::dynamic_bitset<>& curBuck, 
                                     bool (*f)(weightT))
@@ -544,14 +490,14 @@ reqT deltaStepping::findRequestsAux(const boost::dynamic_bitset<>& curBuck,
   return req;
 }
 
-inline
+
 void deltaStepping::relaxRequests(reqT& reqs)
 {
   for (auto req : reqs)
     relax(req.first, req.second);
 }
 
-inline
+
 void deltaStepping::relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks)
 {
   auto* edges = diGraph->at(srcNodeId)->getOutEdges();
@@ -563,8 +509,8 @@ void deltaStepping::relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks)
       distT& oldDist = dists.at(destNodeId);
       distT newDist = dists.at(srcNodeId) + edgeWeight;
       if (newDist < oldDist) {
-	// FIXME: this might not be thread-safe
-	dists.at(destNodeId) = newDist;
+	#pragma omp atomic write
+	dists[destNodeId] = newDist;
 	unsigned buckPos = newDist / delta;
 	if (buckPos >= lBucks.size()) {
 	  lBucks.resize(buckPos + 1);
@@ -575,7 +521,23 @@ void deltaStepping::relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks)
   }
 }
 
-inline
+
+void deltaStepping::copyToGBuck(bucksT& gBuck, lBucksT& lBucks)
+{
+  LOG(ALG_DELTASTEPPING_DEBUG, "%u: boi1", omp_get_thread_num());
+  for (unsigned i = 0; i < lBucks.size(); ++i) {
+    if (!lBucks.at(i).empty()) {
+      omp_set_lock(&locks[i]);
+      lBuckT& lRefBuck = lBucks.at(i);
+      buckT& gRefBuck = bucks.at(i);      
+      gRefBuck.insert(gRefBuck.end(), lRefBuck.begin(), lRefBuck.end());
+      omp_unset_lock(&locks[i]);
+    }
+  }
+  LOG(ALG_DELTASTEPPING_DEBUG, "%u: boi1", omp_get_thread_num());
+}
+
+
 void deltaStepping::relax(nodeIdT nid, distT newDist)
 {
   LOG(ALG_DELTASTEPPING_DEBUG, "relaxing node %u with tentative distance %u",
@@ -586,19 +548,19 @@ void deltaStepping::relax(nodeIdT nid, distT newDist)
   }
 }
 
-inline
+
 bool deltaStepping::isLight(weightT w)
 {
   return w <= delta;
 }
 
-inline
+
 bool deltaStepping::isHeavy(weightT w)
 {
   return w > delta;
 }
 
-inline
+
 void deltaStepping::bitsetListUnion(boost::dynamic_bitset<>& bs, 
                                     const buckT& ls)
 {
@@ -607,7 +569,7 @@ void deltaStepping::bitsetListUnion(boost::dynamic_bitset<>& bs,
   }
 }
 
-inline
+
 void deltaStepping::recycleBucks()
 {
   unsigned i = 0;
@@ -620,7 +582,7 @@ void deltaStepping::recycleBucks()
 //===----------------------------------------------------------===//
 // Debugging procedures
 //===----------------------------------------------------------===//
-inline
+
 void deltaStepping::printBuck(buckT& buck)
 {
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
@@ -631,7 +593,7 @@ void deltaStepping::printBuck(buckT& buck)
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
 
-inline
+
 void deltaStepping::printReq(reqT& reqs)
 {
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
@@ -642,7 +604,7 @@ void deltaStepping::printReq(reqT& reqs)
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
 
-inline
+
 void deltaStepping::printBs(boost::dynamic_bitset<>& bs)
 {
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
@@ -655,7 +617,7 @@ void deltaStepping::printBs(boost::dynamic_bitset<>& bs)
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
 
-inline
+
 void deltaStepping::printDists(distsT& dists)
 {
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
@@ -668,7 +630,7 @@ void deltaStepping::printDists(distsT& dists)
   std::cerr << "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 }
 
-inline
+
 void deltaStepping::assertEqualRes(void (deltaStepping::* f1)(),
 				   void (deltaStepping::* f2)())
 {
@@ -682,7 +644,7 @@ void deltaStepping::assertEqualRes(void (deltaStepping::* f1)(),
   LOG(ALG_DELTASTEPPING_ASSERT, "End -- assertEqualRes");
 }
 
-inline
+
 bool deltaStepping::compareDists(distsT& d1, distsT& d2)
 {
   if (d1.size() != d2.size()) {
