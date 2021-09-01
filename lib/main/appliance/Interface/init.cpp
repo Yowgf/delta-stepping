@@ -317,19 +317,6 @@ void init::printOut(Alg::deltaStepping& dsRun) const
 
 void init::printOutDists(Alg::deltaStepping& dsRun) const
 {
-  // std::ifstream ifs(outFileName, std::ios_base::in);
-
-  // const unsigned bufSz = 0xFFFF;
-  // while (ifs.good()) {
-  //   char buffer[bufSz];
-  //   ifs.read(buffer, bufSz - 1);
-  //   buffer[ifs.gcount()] = '\0';
-  //   std::cout << buffer;
-  // }
-
-  // if (!ifs.eof()) {
-  //   throw std::logic_error{"(printOutDists) Error while printing distances."};
-  // }
   dsRun.printOutToStream(std::cout);
 }
 

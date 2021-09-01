@@ -4,15 +4,11 @@
 // File purpose: ~deltaStepping~ class declaration.
 //===----------------------------------------------------------===//
 
-// TODO: get twitter benchmark
+// TODO: Make sourceNode a program argument.
 //
-// TODO: make sure the us road benchmark is the correct one. If so,
-//   insert unitary weights in it.
-// 
-// TODO: maybe remove dynamic_bitset-dependent implementations
-//
-// TODO: Rename the original paper implementation, to indicate
-// precisely this.
+// TODO: Reflect the sourceNode change in all places that depend on
+// number of arguments.
+
 
 #ifndef DELTA_STEPPING_H
 #define DELTA_STEPPING_H
@@ -41,7 +37,6 @@ typedef std::vector<nodeIdT> buckT;
 typedef DS::circVec<buckT> bucksT;
 typedef std::list<std::pair<unsigned, distT> > reqT;
 
-// Separated declarations for parallel implementation.
 typedef std::vector<nodeIdT> lBuckT; // Local
 typedef std::vector<lBuckT> lBucksT; // Local
 
@@ -49,10 +44,6 @@ class deltaStepping {
   using digraph = DS::digraph<nodeIdT>;
 
 public:
-
-  // This function performs the delta stepping algorithm according
-  // to the given mode. It writes the results on the file whose name
-  // is provided in the argument ~outFileName~.
   deltaStepping();
   ~deltaStepping();
 
@@ -95,12 +86,12 @@ private:
   //===--------------------------------------------------------===//
   // Procedures used by the algorithm
   //===--------------------------------------------------------===//
-  // Ground truth version
+  // Ground truth algorithm
   void dijkstra();
   // These are all the versions of the algorithm, that can be
   // differentiated according to the ~mode~ argument given to the
   // constructor.
-  void sequential();
+  void original();
   void parallel();
   void parallelBucketFusion();
 
@@ -109,6 +100,7 @@ private:
   void postprocessingPrl();
   unsigned getMinBuckIdx();
   buckT* getMinBuck();
+  void bucketFusion(lBucksT& lBucks);
   // FIXME: we are currently getting some graph attributes, such as edge weight,
   // from outside the algorithm. This might not be possible in some
   // settings. The function fetchGraphGlobalAtts below is supposed to take care
@@ -126,7 +118,7 @@ private:
   reqT findRequestsAux(const boost::dynamic_bitset<>& curBuck, 
                        bool (*f) (weightT w));
   void relaxRequests(reqT&);
-  // Relaxes the outgoing edges of srcNode
+  // Relaxes the outgoing edges of srcNodeId
   void relaxEdgesPrl(nodeIdT srcNodeId, lBucksT& lBucks);
   void copyToGBuck(bucksT&, lBucksT&);
   void relax(nodeIdT, distT);

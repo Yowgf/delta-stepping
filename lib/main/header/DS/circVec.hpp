@@ -15,28 +15,28 @@ namespace DS {
 template <class valueT>
 class circVec : public std::vector<valueT> {
 public:
-  explicit circVec() : vecBeggining(0)
+  explicit circVec() : vecBegin(0)
   {}
 
   explicit circVec(unsigned sz, const valueT& val = valueT())
-    : vecBeggining(0), std::vector<valueT>(sz, val)
+    : vecBegin(0), std::vector<valueT>(sz, val)
   {}
 
   valueT& at(unsigned pos)  {
-    return this->data()[(vecBeggining + pos) % this->size()];
+    return this->data()[(vecBegin + pos) % this->size()];
   }
 
-  void setBeggining(unsigned newVal)
+  void setBegin(unsigned newVal)
   {
-    vecBeggining = newVal;
+    vecBegin = newVal;
   }
 
-  unsigned getBeggining() {
-    return vecBeggining;
+  unsigned getBegin() {
+    return vecBegin;
   }
 
 private:
-  unsigned vecBeggining;
+  unsigned vecBegin;
 
 };
   
