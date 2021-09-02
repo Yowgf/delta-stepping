@@ -4,12 +4,6 @@
 // File purpose: ~deltaStepping~ class declaration.
 //===----------------------------------------------------------===//
 
-// TODO: Make sourceNode a program argument.
-//
-// TODO: Reflect the sourceNode change in all places that depend on
-// number of arguments.
-
-
 #ifndef DELTA_STEPPING_H
 #define DELTA_STEPPING_H
 
@@ -101,6 +95,8 @@ private:
   unsigned getMinBuckIdx();
   buckT* getMinBuck();
   void bucketFusion(lBucksT& lBucks);
+  void updateIdxs(unsigned& prevGBuckSz, buckT** gMinBuck, unsigned& gMinBuckIdx,
+		  unsigned& gMinBuckStartIdx);
   // FIXME: we are currently getting some graph attributes, such as edge weight,
   // from outside the algorithm. This might not be possible in some
   // settings. The function fetchGraphGlobalAtts below is supposed to take care

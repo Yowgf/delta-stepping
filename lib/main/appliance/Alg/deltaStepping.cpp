@@ -6,17 +6,26 @@
 //===----------------------------------------------------------===//
 
 #include "Alg/deltaStepping.hpp"
-#include "Utils/fun.hpp"
 #include "Utils/num.hpp"
 #include "Utils/str.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <queue>
 #include <stdexcept>
 
 using namespace std;
 using namespace Utils;
+
+// typedef chrono::duration<double> clkT;
+// clkT part1Temp = clkT::zero();
+// clkT part1Sum = clkT::zero();
+// clkT part2Temp = clkT::zero();
+// clkT part2Sum = clkT::zero();
+// clkT part3Temp = clkT::zero();
+// clkT part3Sum = clkT::zero();
 
 namespace Alg {
 
@@ -228,18 +237,7 @@ void deltaStepping::parallel()
       lBucks.clear();
       #pragma omp barrier
       #pragma omp single nowait
-      {
-	unsigned updtGBuckSz = gMinBuck->size();
-	if (prevGBuckSz == updtGBuckSz) { // No reinsertions!
-	  gMinBuck->clear();
-	  gMinBuckIdx = getMinBuckIdx();
-	  gMinBuck = &bucks.at(gMinBuckIdx);
-	  gMinBuckStartIdx = 0;
-	}
-	else {
-	  gMinBuckStartIdx = prevGBuckSz;
-	}
-      }
+      updateIdxs(prevGBuckSz, &gMinBuck, gMinBuckIdx, gMinBuckStartIdx);
       #pragma omp barrier
     }
   }
@@ -268,7 +266,7 @@ void deltaStepping::parallelBucketFusion()
   {
     lBucksT lBucks; // Local buckets
     while (gMinBuckIdx != maxUns) {
-      #pragma omp single
+      #pragma omp single nowait
       prevGBuckSz = gMinBuck->size();
       #pragma omp for nowait schedule(dynamic, 64)
       for (unsigned i = gMinBuckStartIdx; i < gMinBuck->size(); ++i) {
@@ -276,29 +274,16 @@ void deltaStepping::parallelBucketFusion()
 	relaxEdgesPrl(srcNode, lBucks);
       }
       bucketFusion(lBucks);
+      #pragma omp barrier
       copyToGBuck(bucks, lBucks);
+      lBucks.clear();
       #pragma omp barrier
       #pragma omp single nowait
-      {
-	unsigned updtGBuckSz = gMinBuck->size();
-	if (prevGBuckSz == updtGBuckSz) { // No reinsertions!
-	  LOG(ALG_DELTASTEPPING_DEBUG, "NO REINSERTIONS IN BUCKET!");
-	  gMinBuck->clear();
-	  gMinBuckIdx = getMinBuckIdx();
-	  gMinBuck = &bucks.at(gMinBuckIdx);
-	  gMinBuckStartIdx = 0;
-	}
-	else {
-	  LOG(ALG_DELTASTEPPING_DEBUG, "FOUND REINSERTION! JUST UPDATE THE NEW STARTING INDEX");
-	  gMinBuckStartIdx = prevGBuckSz;
-	}
-      }
-      
-      lBucks.clear();
+      updateIdxs(prevGBuckSz, &gMinBuck, gMinBuckIdx, gMinBuckStartIdx);
       #pragma omp barrier
     }
   }
-
+  
   postprocessingPrl();
   
   LOG(ALG_DELTASTEPPING_DEBUG, "End -- deltaStepping::parallelBucketFusion");
@@ -329,6 +314,9 @@ void deltaStepping::preprocessing()
 inline
 void deltaStepping::postprocessingPrl()
 {
+  for (unsigned i = 0; i < sizeof(locks) / sizeof(*locks); ++i) {
+    omp_destroy_lock(&locks[i]);
+  }
   delete[] locks;
 }
 
@@ -357,7 +345,8 @@ inline
 void deltaStepping::bucketFusion(lBucksT& lBucks)
 {
   if (!lBucks.empty()) {
-    const unsigned lbIdx = 0;
+    unsigned lbIdx = 0;
+    while (lBucks[lbIdx].empty()) lbIdx++;
     while (!lBucks[lbIdx].empty() &&
 	   lBucks[lbIdx].size() < kminBuckThreshold) {
       // This copy is necessary, because we want to remove nodes from the
@@ -373,6 +362,22 @@ void deltaStepping::bucketFusion(lBucksT& lBucks)
 	relaxEdgesPrl(srcNode, lBucks);
       }
     }
+  }
+}
+
+inline
+void deltaStepping::updateIdxs(unsigned& prevGBuckSz, buckT** gMinBuck,
+			       unsigned& gMinBuckIdx, unsigned& gMinBuckStartIdx)
+{
+  unsigned updtGBuckSz = (*gMinBuck)->size();
+  if (prevGBuckSz == updtGBuckSz) { // No reinsertions!
+    (*gMinBuck)->clear();
+    gMinBuckIdx = getMinBuckIdx();
+    *gMinBuck = &bucks.at(gMinBuckIdx);
+    gMinBuckStartIdx = 0;
+  }
+  else {
+    gMinBuckStartIdx = prevGBuckSz;
   }
 }
 
@@ -516,7 +521,7 @@ void deltaStepping::copyToGBuck(bucksT& gBuck, lBucksT& lBucks)
     if (!lBucks.at(i).empty()) {
       omp_set_lock(&locks[i]);
       lBuckT& lRefBuck = lBucks.at(i);
-      buckT& gRefBuck = bucks.at(i);      
+      buckT& gRefBuck = bucks.at(i);
       gRefBuck.insert(gRefBuck.end(), lRefBuck.begin(), lRefBuck.end());
       omp_unset_lock(&locks[i]);
     }

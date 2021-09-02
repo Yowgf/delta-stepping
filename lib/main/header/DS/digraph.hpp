@@ -93,6 +93,18 @@ public:
     return numNodes;
   }
 
+  inline unsigned getNumEdges()
+  {
+    if (adjList != nullptr) {
+      unsigned numEdges = 0;
+      for (unsigned i = 0; i < adjList->size(); ++i) {
+	numEdges += adjList->at(i)->size();
+      }
+      return numEdges;
+    }
+    return 0;
+  }
+
   inline weightT getMaxEdgeWeight()
   {
     return maxEdgeWeight;
@@ -173,12 +185,14 @@ private:
   // fragmentation, and thus poor performance.
   void allocateEdges(DS::array<unsigned>& numEdges) noexcept(false)
   {
+    LOG(DS_DIGRAPH_DEBUG, "Start -- allocateEdges");
     register unsigned i = 0;
     for (i = 0; i < numEdges.size(); ++i) {
-      if (numEdges.at(i)) {
+      if (numEdges.at(i) != 0) {
         adjList->at(i)->allocEdges(numEdges.at(i));
       }
     }
+    LOG(DS_DIGRAPH_DEBUG, "End -- allocateEdges");
   }
 
   void allocateEdges(std::vector<unsigned>& numEdges) noexcept(false)

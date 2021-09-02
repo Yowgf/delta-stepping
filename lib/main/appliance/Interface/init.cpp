@@ -68,6 +68,9 @@ void init::destroy()
 
 void init::timeRunAlgo()
 {
+#if INTERFACE_INIT_PRINT_GRAPH_SIZE
+  printGraphSize();
+#endif
   Alg::deltaStepping dsRun;
   auto time1 = std::chrono::high_resolution_clock::now();
   dsRun.run(inGraph, inMode.c_str(), delta, static_cast<unsigned>(numThreads));
@@ -313,6 +316,13 @@ void init::printOut(Alg::deltaStepping& dsRun) const
 #if INTERFACE_INIT_PRINT_TIME
   printOutTime();
 #endif
+}
+
+void init::printGraphSize() const
+{
+  std::cout << "Graph size: ";
+  std::cout << inGraph->getNumNodes() << " nodes, " << inGraph->getNumEdges();
+  std::cout << " edges\n";
 }
 
 void init::printOutDists(Alg::deltaStepping& dsRun) const

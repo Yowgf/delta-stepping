@@ -71,6 +71,9 @@ public:
   // Utility functions
   unsigned size()
   {
+    if (out == nullptr) {
+      return 0;
+    }
     return out->size();
   }
 

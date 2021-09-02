@@ -7,7 +7,7 @@
 
 # Compiler command and flags
 CXX   := 
-FLAGS := -std=c++14 -g -Wextra -fopenmp
+FLAGS := -std=c++14 -Wextra -fopenmp -O3
 
 # Source directory
 SOURCE := lib
